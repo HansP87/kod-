@@ -1,0 +1,142 @@
+#include "mbed.h"
+Serial pc(USBTX, USBRX); // tx, rx
+int mottatt;
+char s[20];
+BusOut Step(PA_7, PB_6, PC_7, PA_9);    //dette er stepperen for vertikal akse
+BusOut Step2(PA_8, PB_10, PB_4, PB_5);  //dette er stepperen for horisontal akse
+
+int step1count=256;                     //setter startposisjon for steppere i begge akser
+int step2count=256;
+
+void Rx_interrupt()                     //interrupt-funksjon
+{
+    if (pc.readable())                  //hvis det leses noe på usbrx
+    {
+        pc.gets(s,20);                  //tar imot sting. neida, ikke vokalisten i police. jeg mener en string
+        pc.puts(s);
+        mottatt = atoi(s);              //konverterer string til heltall(int)
+    }
+}
+void step1ccv()                         //funksjon for å steppe 1 gang i vertikal akse, mot klokka
+{
+    if(step1count>128) //   512/360=1.42 => 1.42*90=127.8
+    {
+    Step = 0X9;
+    wait_ms(5);
+    Step = 0XC;
+    wait_ms(5);
+    Step = 0X6;
+    wait_ms(5);
+    Step = 0X3;
+    wait_ms(5);
+    step1count-=1;
+    }
+    else{Step = 0X0;}
+}
+void step1cv()                          //funksjon for å steppe 1 gang i vertikal akse, med klokka
+{
+    if(step1count<384) // 256+128=283
+    {
+    Step = 0X3;
+    wait_ms(5);            
+    Step = 0X6;
+    wait_ms(5);
+    Step = 0XC;
+    wait_ms(5);
+    Step = 0X9;
+    wait_ms(5);
+    step1count+=1;
+    }
+    else{Step = 0X0;}
+}
+void step2ccv()                     //funksjon for å steppe 1 gang i vertikal akse, mot klokka
+{
+    if(step2count>128)
+    {
+    Step2 = 0X9;
+    wait_ms(5);
+    Step2 = 0XC;
+    wait_ms(5);
+    Step2 = 0X6;
+    wait_ms(5);
+    Step2 = 0X3;
+    wait_ms(5);
+    step2count-=1;
+    }
+    else{Step2 = 0X0;}
+}
+void step2cv()                      //funksjon for å steppe 1 gang i vertikal akse, med klokka
+{
+    if(step2count<383)
+    {
+    Step2 = 0X3;
+    wait_ms(5);            
+    Step2 = 0X6;
+    wait_ms(5);
+    Step2 = 0XC;
+    wait_ms(5);
+    Step2 = 0X9;
+    wait_ms(5);
+    step2count+=1;
+    }
+    else{Step2 = 0X0;}
+}
+
+int main()
+{
+    pc.baud(9600);
+    // Setup a serial interrupt function to receive data
+    pc.attach(&Rx_interrupt, Serial::RxIrq);
+    
+    while (1) 
+    {         
+        if (mottatt == 1)
+        {
+            step2ccv();            
+            Step = 0X0;
+        }            
+        if (mottatt == 2)
+        {            
+            step2cv();            
+            Step = 0X0;
+        }        
+        if (mottatt == 3)
+        {
+            step1ccv();            
+            Step2 = 0x0;            
+        }
+        if (mottatt == 4)
+        {
+            step1cv();            
+            Step = 0X0;
+        }
+        if (mottatt == 5)
+        {
+            step1ccv();
+            step2ccv();
+        }
+        if (mottatt == 6)
+        {
+            step2cv();
+            step1ccv();
+        }
+        if (mottatt == 7)
+        {
+            step1cv();
+            step2ccv();
+        }
+        if (mottatt == 8)
+        {
+            step1cv();
+            step2cv();
+        }
+            
+        else {Step = 0X0;Step2 = 0X0;}
+    }
+        
+}
+
+
+
+
+
