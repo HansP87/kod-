@@ -1,0 +1,175 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Threading; //Add threading support
+using System.Net; //Add network support
+using System.Net.Sockets; //Add Sockets support
+
+
+namespace udp_send
+{
+
+    public partial class Form1 : Form
+    {
+        
+        
+        //private Thread workerThread;
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+        private void TextBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void settestring()
+        {
+            textBox1.Text = "";             //nullstiller tekstboksen
+            if(checkBox1.Checked == true)   //sjekker alle checkbox'ene
+            {
+                textBox1.Text += "1,";      //hvis den er huket av legges '1' til i tekstboksen
+            }
+            else
+            {
+                textBox1.Text += "0,";      //hvis ikke den er huket av legges '0' til i tekstboksen
+            }
+
+            if (checkBox3.Checked == true)  //sjekker alle nedover..
+            {
+                textBox1.Text += "1,";
+            }
+            else
+            {
+                textBox1.Text += "0,";
+            }
+
+            if (checkBox4.Checked == true)
+            {
+                textBox1.Text += "1,";
+            }
+            else
+            {
+                textBox1.Text += "0,";
+            }
+
+            if (checkBox2.Checked == true)
+            {
+                textBox1.Text += "1,";
+            }
+            else
+            {
+                textBox1.Text += "0,";
+            }
+            if (checkBox5.Checked == true)
+            {      
+                textBox1.Text += "1,";
+            }
+            else
+            {
+                textBox1.Text += "0,";
+            }
+
+            if (checkBox6.Checked == true)
+            {
+                textBox1.Text += "1,";
+            }
+            else
+            {
+                textBox1.Text += "0,";
+            }
+            byte[] data = new byte[1024];                             //data-variabel med angitt stoerrelse
+            IPEndPoint ipep =                                         //endepunkt for udp-meldinger angis
+                new IPEndPoint(IPAddress.Parse("10.0.0.61"), 9100);
+            //her deklareres udp-'socketen' og hvilke protokoller som brukes
+            Socket server = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            string sendeString = textBox1.Text.ToString() + "\n";     //deklarerer string og konverterer innholdet i tekstboksen til string og legger til '\n'
+            data = Encoding.ASCII.GetBytes(sendeString);              //konverterer til 7-bits ASCII-symboler
+
+            server.SendTo(data, data.Length, SocketFlags.None, ipep); //sender data til socketen
+        }
+
+        private void Timer1_Tick(object sender, EventArgs e)
+        {
+            
+        }
+
+        //her er logikken for knapper og hvordan de huker av/paa checkbokser. 
+        private void ButtonUp_MouseDown(object sender, EventArgs e)   //event naar oppknappen trykkes  
+        {
+            checkBox1.Checked = true;                                 //oppknappen huker checkbox1 og kaller paa funksjonen settestring()
+            settestring();
+        }
+        private void ButtonUp_MouseUp(object sender, EventArgs e)     //event naar oppknappen slippes
+        {
+            checkBox1.Checked = false;                                //naar oppknappen slippes hukes checkbox1 av og kaller paa funksjonen settestring()
+            settestring();                                            //linjene nedefor er like for de andre knappene og checkbox'ene 
+        }
+
+        private void ButtonDown_MouseDown(object sender, EventArgs e)
+        {
+            checkBox3.Checked = true;
+            settestring();
+        }
+        private void ButtonDown_MouseUp(object sender, EventArgs e)
+        {
+            checkBox3.Checked = false;
+            settestring();
+        }
+
+        private void ButtonLeft_MouseDown(object sender, EventArgs e)
+        {
+            checkBox4.Checked = true;
+            settestring();
+        }
+        private void ButtonLeft_MouseUp(object sender, EventArgs e)
+        {
+            checkBox4.Checked = false;
+            settestring();
+        }
+
+        private void ButtonRight_MouseDown(object sender, EventArgs e)
+        {
+            checkBox2.Checked = true;
+            settestring();
+        }
+        private void ButtonRight_MouseUp(object sender, EventArgs e)
+        {
+            checkBox2.Checked = false;
+            settestring();
+
+        }
+
+        private void Timer2_Tick(object sender, EventArgs e)
+        {
+            
+           
+        }
+
+        private void CheckBox1_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void CheckBox6_CheckedChanged(object sender, EventArgs e)
+        {
+            settestring();
+        }
+
+        private void CheckBox5_CheckedChanged(object sender, EventArgs e)
+        {
+            settestring();
+        }
+
+        private void ButtonLeft_Click(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
