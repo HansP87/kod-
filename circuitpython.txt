@@ -5,16 +5,20 @@ from adafruit_bluefruit_connect.button_packet import ButtonPacket
 uart_server = UARTServer()
 
 while True:
+    #her begynner dongelen å sende navnet på enheten og beskriver egenskapene dens
     uart_server.start_advertising()
     while not uart_server.connected:
         pass
 
-    # Now we're connected
+    # Når vi har forbindelse med en perifer enhet:
 
     while uart_server.connected:
         if uart_server.in_waiting:
+            #her deklareres en pakke som er en samling data den sentrale mottar fra den perifere enheten  
             packet = Packet.from_stream(uart_server)
+            #hvis data i pakken er et tastetrykk:
             if isinstance(packet, ButtonPacket):
+                #tester data i pakken med en rekke if-betingelser og skriver til serieporten henholdsvis
                 if packet.pressed:
                     if packet.button == ButtonPacket.BUTTON_1:
                         # The 1 button was pressed.
