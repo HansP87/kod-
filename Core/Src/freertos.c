@@ -25,9 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "adc.h"
 #include "lptim.h"
 #include "stm32h7xx_hal_adc.h"
+#include "usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -179,6 +181,9 @@ const osMessageQueueAttr_t transmitQue_attributes = {
 
 /* USER CODE END FunctionPrototypes */
 
+static int serialize_tx_packet(const tx_packet_t *pkt, char *buf, size_t size);
+static void swap_tx_buffers(void);
+
 void StartDefaultTask(void *argument);
 void StartDSP(void *argument);
 void transmitStart(void *argument);
@@ -207,10 +212,6 @@ void MX_FREERTOS_Init(void) {
 	/* USER CODE BEGIN RTOS_TIMERS */
 	/* start timers, add new ones, ... */
 	/* USER CODE END RTOS_TIMERS */
-
-	/* Create the queue(s) */
-	/* creation of transmitQue */
-	transmitQueHandle = osMessageQueueNew (6, sizeof(uint16_t), &transmitQue_attributes);
 
 	/* USER CODE BEGIN RTOS_QUEUES */
 	/* add queues, ... */
@@ -371,17 +372,9 @@ void StartDSP(void *argument)
 			else
 			{
 				adc_missed_count++;
-				tx_working->status_flags |= DSP_STATUS_ADC_MISSED;
 				last_adc1_frame = adc1_now;
 				last_adc2_frame = adc2_now;
 			}
-			tx_packet_t *pkt;
-
-			taskENTER_CRITICAL();
-			pkt = (tx_packet_t *)tx_published;
-			taskEXIT_CRITICAL();
-
-			tx_last_sent_debug = *pkt;
 		}
 	}
 }
@@ -397,6 +390,9 @@ void StartDSP(void *argument)
 void transmitStart(void *argument)
 {
   uint32_t flags;
+  char tx_buffer[512];
+  tx_packet_t current_packet;
+  int length;
 
   for (;;)
   {
@@ -405,8 +401,16 @@ void transmitStart(void *argument)
     if ((flags & TX_FLAG_SEND) != 0U)
     {
       taskENTER_CRITICAL();
-      tx_last_sent_debug = *tx_published;
+      current_packet = *tx_published;
       taskEXIT_CRITICAL();
+
+      length = serialize_tx_packet(&current_packet, tx_buffer, sizeof(tx_buffer));
+      if (length > 0)
+      {
+        HAL_UART_Transmit(&huart1, (uint8_t *)tx_buffer, (uint16_t)length, HAL_MAX_DELAY);
+      }
+
+      tx_last_sent_debug = current_packet;
     }
   }
 }
@@ -449,6 +453,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 	{
 		adc2_frame_count++;
 	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == WAKEUP_Pin)
+    {
+        osThreadFlagsSet(transmitHandle, TX_FLAG_SEND);
+    }
 }
 /* USER CODE END Application */
 
