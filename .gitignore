@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+
+# STM32CubeIDE / Eclipse
+.settings/
+Debug/
+* Debug.launch
+
+# Build outputs
+*.o
+*.obj
+*.elf
+*.map
+*.list
+*.bin
+*.hex
+*.d
+*.dep
+*.log
+
+# User-specific and temporary
+*~
+*.swp
+*.tmp
+*.bak
+
+# Project workspace metadata
+*.metadata
+
+# Ignore IDE-specific launch files if they are user specific
+*.launch
