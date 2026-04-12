@@ -60,6 +60,7 @@ extern DMA_HandleTypeDef hdma_adc2;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern TIM_HandleTypeDef htim1;
+extern LPTIM_HandleTypeDef hlptim2;
 
 /* USER CODE BEGIN EV */
 
@@ -234,5 +235,9 @@ void TIM1_UP_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+void LPTIM2_IRQHandler(void)
+{
+  HAL_LPTIM_IRQHandler(&hlptim2);
+}
 
 /* USER CODE END 1 */

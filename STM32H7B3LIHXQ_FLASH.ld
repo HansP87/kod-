@@ -166,7 +166,13 @@ SECTIONS
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
   } >RAM
-
+  .dma_buffer (NOLOAD) :
+  {
+    . = ALIGN(32);
+    *(.dma_buffer)
+    . = ALIGN(32);
+  } >RAM_CD
+  
   /* Remove information from the standard libraries */
   /DISCARD/ :
   {

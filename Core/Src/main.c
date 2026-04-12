@@ -108,6 +108,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start(&htim2);
 
   /* USER CODE END 2 */
 
