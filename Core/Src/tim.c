@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    tim.c
@@ -16,13 +15,8 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "tim.h"
-
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
 
 TIM_HandleTypeDef htim2;
 
@@ -30,16 +24,9 @@ TIM_HandleTypeDef htim2;
 void MX_TIM2_Init(void)
 {
 
-  /* USER CODE BEGIN TIM2_Init 0 */
+  TIM_SlaveConfigTypeDef slave_config = {0};
+  TIM_MasterConfigTypeDef master_config = {0};
 
-  /* USER CODE END TIM2_Init 0 */
-
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 279;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -50,57 +37,42 @@ void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_DISABLE;
-  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
-  if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
+  slave_config.SlaveMode = TIM_SLAVEMODE_DISABLE;
+  slave_config.InputTrigger = TIM_TS_ITR0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim2, &slave_config) != HAL_OK)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  master_config.MasterOutputTrigger = TIM_TRGO_RESET;
+  master_config.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &master_config) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
 
 }
 
-void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_base_handle)
 {
 
-  if(tim_baseHandle->Instance==TIM2)
+  if(tim_base_handle->Instance==TIM2)
   {
-  /* USER CODE BEGIN TIM2_MspInit 0 */
 
-  /* USER CODE END TIM2_MspInit 0 */
     /* TIM2 clock enable */
     __HAL_RCC_TIM2_CLK_ENABLE();
-  /* USER CODE BEGIN TIM2_MspInit 1 */
 
-  /* USER CODE END TIM2_MspInit 1 */
   }
 }
 
-void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
+void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_base_handle)
 {
 
-  if(tim_baseHandle->Instance==TIM2)
+  if(tim_base_handle->Instance==TIM2)
   {
-  /* USER CODE BEGIN TIM2_MspDeInit 0 */
 
-  /* USER CODE END TIM2_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM2_CLK_DISABLE();
-  /* USER CODE BEGIN TIM2_MspDeInit 1 */
 
-  /* USER CODE END TIM2_MspDeInit 1 */
   }
 }
-
-/* USER CODE BEGIN 1 */
-
-/* USER CODE END 1 */
 

@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    stm32h7xx_it.c
@@ -15,44 +14,23 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32h7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN TD */
-
-/* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_adc1;
@@ -62,10 +40,6 @@ extern DMA_HandleTypeDef hdma_usart1_tx;
 extern TIM_HandleTypeDef htim1;
 extern LPTIM_HandleTypeDef hlptim2;
 
-/* USER CODE BEGIN EV */
-
-/* USER CODE END EV */
-
 /******************************************************************************/
 /*           Cortex Processor Interruption and Exception Handlers          */
 /******************************************************************************/
@@ -74,14 +48,10 @@ extern LPTIM_HandleTypeDef hlptim2;
   */
 void NMI_Handler(void)
 {
-  /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
 
-  /* USER CODE END NonMaskableInt_IRQn 0 */
-  /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
    while (1)
   {
   }
-  /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
 /**
@@ -89,13 +59,9 @@ void NMI_Handler(void)
   */
 void HardFault_Handler(void)
 {
-  /* USER CODE BEGIN HardFault_IRQn 0 */
 
-  /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
 
@@ -104,13 +70,9 @@ void HardFault_Handler(void)
   */
 void MemManage_Handler(void)
 {
-  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
 
-  /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
   }
 }
 
@@ -119,13 +81,9 @@ void MemManage_Handler(void)
   */
 void BusFault_Handler(void)
 {
-  /* USER CODE BEGIN BusFault_IRQn 0 */
 
-  /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
-    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
-    /* USER CODE END W1_BusFault_IRQn 0 */
   }
 }
 
@@ -134,13 +92,9 @@ void BusFault_Handler(void)
   */
 void UsageFault_Handler(void)
 {
-  /* USER CODE BEGIN UsageFault_IRQn 0 */
 
-  /* USER CODE END UsageFault_IRQn 0 */
   while (1)
   {
-    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
-    /* USER CODE END W1_UsageFault_IRQn 0 */
   }
 }
 
@@ -149,12 +103,7 @@ void UsageFault_Handler(void)
   */
 void DebugMon_Handler(void)
 {
-  /* USER CODE BEGIN DebugMonitor_IRQn 0 */
 
-  /* USER CODE END DebugMonitor_IRQn 0 */
-  /* USER CODE BEGIN DebugMonitor_IRQn 1 */
-
-  /* USER CODE END DebugMonitor_IRQn 1 */
 }
 
 /******************************************************************************/
@@ -169,13 +118,9 @@ void DebugMon_Handler(void)
   */
 void DMA1_Stream0_IRQHandler(void)
 {
-  /* USER CODE BEGIN DMA1_Stream0_IRQn 0 */
 
-  /* USER CODE END DMA1_Stream0_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_adc1);
-  /* USER CODE BEGIN DMA1_Stream0_IRQn 1 */
 
-  /* USER CODE END DMA1_Stream0_IRQn 1 */
 }
 
 /**
@@ -183,13 +128,9 @@ void DMA1_Stream0_IRQHandler(void)
   */
 void DMA1_Stream1_IRQHandler(void)
 {
-  /* USER CODE BEGIN DMA1_Stream1_IRQn 0 */
 
-  /* USER CODE END DMA1_Stream1_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_usart1_rx);
-  /* USER CODE BEGIN DMA1_Stream1_IRQn 1 */
 
-  /* USER CODE END DMA1_Stream1_IRQn 1 */
 }
 
 /**
@@ -197,13 +138,9 @@ void DMA1_Stream1_IRQHandler(void)
   */
 void DMA1_Stream2_IRQHandler(void)
 {
-  /* USER CODE BEGIN DMA1_Stream2_IRQn 0 */
 
-  /* USER CODE END DMA1_Stream2_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_usart1_tx);
-  /* USER CODE BEGIN DMA1_Stream2_IRQn 1 */
 
-  /* USER CODE END DMA1_Stream2_IRQn 1 */
 }
 
 /**
@@ -211,13 +148,9 @@ void DMA1_Stream2_IRQHandler(void)
   */
 void DMA1_Stream3_IRQHandler(void)
 {
-  /* USER CODE BEGIN DMA1_Stream3_IRQn 0 */
 
-  /* USER CODE END DMA1_Stream3_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_adc2);
-  /* USER CODE BEGIN DMA1_Stream3_IRQn 1 */
 
-  /* USER CODE END DMA1_Stream3_IRQn 1 */
 }
 
 /**
@@ -225,19 +158,24 @@ void DMA1_Stream3_IRQHandler(void)
   */
 void TIM1_UP_IRQHandler(void)
 {
-  /* USER CODE BEGIN TIM1_UP_IRQn 0 */
 
-  /* USER CODE END TIM1_UP_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
-  /* USER CODE BEGIN TIM1_UP_IRQn 1 */
 
-  /* USER CODE END TIM1_UP_IRQn 1 */
 }
 
-/* USER CODE BEGIN 1 */
+/**
+  * @brief Handle EXTI interrupts generated by the wakeup button input.
+  */
+void EXTI15_10_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(WAKEUP_Pin);
+}
+
+/**
+  * @brief Forward LPTIM2 interrupts into the HAL driver.
+  */
 void LPTIM2_IRQHandler(void)
 {
   HAL_LPTIM_IRQHandler(&hlptim2);
 }
 
-/* USER CODE END 1 */

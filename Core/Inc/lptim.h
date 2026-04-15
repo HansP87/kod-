@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    lptim.h
@@ -16,7 +15,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __LPTIM_H__
 #define __LPTIM_H__
@@ -28,24 +26,19 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
 extern LPTIM_HandleTypeDef hlptim1;
 
 extern LPTIM_HandleTypeDef hlptim2;
 
-/* USER CODE BEGIN Private defines */
-
-/* USER CODE END Private defines */
-
+/**
+  * @brief Initialize LPTIM1 as the ADC trigger generator.
+  */
 void MX_LPTIM1_Init(void);
+
+/**
+  * @brief Initialize LPTIM2 as the DSP scheduling timer.
+  */
 void MX_LPTIM2_Init(void);
-
-/* USER CODE BEGIN Prototypes */
-
-/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }

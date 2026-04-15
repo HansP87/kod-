@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    usart.h
@@ -16,7 +15,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USART_H__
 #define __USART_H__
@@ -28,21 +26,12 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
 extern UART_HandleTypeDef huart1;
 
-/* USER CODE BEGIN Private defines */
-
-/* USER CODE END Private defines */
-
+/**
+  * @brief Initialize USART1 for UART logging and console traffic.
+  */
 void MX_USART1_UART_Init(void);
-
-/* USER CODE BEGIN Prototypes */
-
-/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }

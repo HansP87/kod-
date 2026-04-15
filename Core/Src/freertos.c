@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * File Name          : freertos.c
@@ -15,7 +14,6 @@
  *
  ******************************************************************************
  */
-/* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
@@ -24,26 +22,29 @@
 #include "cmsis_os2.h"
 
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <stdarg.h>
 #include "adc.h"
 #include "lptim.h"
 #include "stm32h7xx_hal_adc.h"
 #include "usart.h"
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 typedef StaticTask_t osStaticThreadDef_t;
 typedef StaticQueue_t osStaticMessageQDef_t;
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
 #define ADC_CH_PER_ADC          4U
 #define ADC_SAMPLES_PER_DSP     2U
 #define ADC_BUF_LEN             (ADC_CH_PER_ADC * ADC_SAMPLES_PER_DSP)
+
+#define ADC2_TEMP_INDEX         2U
+#define ADC2_VREF_INDEX         3U
+
+#define ADC_TRIGGER_PERIOD      1499U
+#define ADC_TRIGGER_PULSE       750U
+#define DSP_TICK_PERIOD         2999U
+#define DSP_STARTUP_DELAY_MS    1U
 
 #define DSP_FLAG_TICK           (1U << 0)
 #define TX_FLAG_SEND           	(1U << 0)
@@ -52,20 +53,14 @@ typedef StaticQueue_t osStaticMessageQDef_t;
 #define DSP_STATUS_ADC_LATE     0x00000001U
 #define DSP_STATUS_ADC_MISSED   0x00000002U
 
-/* USER CODE END PD */
-
 /* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-/* USER CODE BEGIN Variables */
-volatile uint32_t adc1_frame_count = 0U;
-volatile uint32_t adc2_frame_count = 0U;
+static volatile uint32_t adc1_frame_count = 0U;
+static volatile uint32_t adc2_frame_count = 0U;
 
-volatile uint32_t adc_overrun_count = 0U;
-volatile uint32_t adc_missed_count  = 0U;
+static volatile uint32_t adc_overrun_count = 0U;
+static volatile uint32_t adc_missed_count  = 0U;
 
 typedef struct
 {
@@ -81,37 +76,15 @@ typedef struct
 	uint32_t status_flags;
 } tx_packet_t;
 
-static tx_packet_t tx_buf_a;
-static tx_packet_t tx_buf_b;
+static tx_packet_t tx_packet_buffer_a;
+static tx_packet_t tx_packet_buffer_b;
 
-static tx_packet_t * volatile tx_published = &tx_buf_a;
-static tx_packet_t * volatile tx_working   = &tx_buf_b;
+static tx_packet_t * volatile published_tx_packet = &tx_packet_buffer_a;
+static tx_packet_t * volatile working_tx_packet   = &tx_packet_buffer_b;
 
-volatile tx_packet_t tx_last_sent_debug;
+static volatile tx_packet_t tx_last_sent_debug;
 
 static uint32_t dsp_sequence = 0U;
-
-typedef struct
-{
-	uint16_t adc1_raw[ADC_SAMPLES_PER_DSP][ADC_CH_PER_ADC];
-	uint16_t adc2_raw[ADC_SAMPLES_PER_DSP][ADC_CH_PER_ADC];
-
-	uint32_t vdda_mv[ADC_SAMPLES_PER_DSP];
-
-	uint32_t adc1_mv[ADC_SAMPLES_PER_DSP][ADC_CH_PER_ADC];
-	uint32_t adc2_mv[ADC_SAMPLES_PER_DSP][ADC_CH_PER_ADC];
-
-	int32_t temperature_c[ADC_SAMPLES_PER_DSP];
-} dsp_frame_t;
-
-typedef struct
-{
-	uint32_t adc1_frame_count;
-	uint32_t adc2_frame_count;
-	uint32_t adc_overrun_count;
-	uint32_t adc_missed_count;
-	uint8_t  frame_valid;
-} dsp_status_t;
 
 __attribute__((section(".dma_buffer"), aligned(32)))
 uint16_t adc1_buf[ADC_BUF_LEN];
@@ -119,75 +92,126 @@ uint16_t adc1_buf[ADC_BUF_LEN];
 __attribute__((section(".dma_buffer"), aligned(32)))
 uint16_t adc2_buf[ADC_BUF_LEN];
 
-
-/* USER CODE END Variables */
 /* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-		.name = "defaultTask",
+osThreadId_t default_task_handle;
+const osThreadAttr_t default_task_attributes = {
+		.name = "default_task",
 		.stack_size = 128 * 4,
 		.priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for dsp */
-osThreadId_t dspHandle;
-uint32_t dspBuffer[ 256 ];
-osStaticThreadDef_t dspControlBlock;
-const osThreadAttr_t dsp_attributes = {
-		.name = "dsp",
-		.cb_mem = &dspControlBlock,
-		.cb_size = sizeof(dspControlBlock),
-		.stack_mem = &dspBuffer[0],
-		.stack_size = sizeof(dspBuffer),
+osThreadId_t dsp_task_handle;
+uint32_t dsp_stack_buffer[256];
+osStaticThreadDef_t dsp_control_block;
+const osThreadAttr_t dsp_task_attributes = {
+		.name = "dsp_task",
+		.cb_mem = &dsp_control_block,
+		.cb_size = sizeof(dsp_control_block),
+		.stack_mem = &dsp_stack_buffer[0],
+		.stack_size = sizeof(dsp_stack_buffer),
 		.priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for transmit */
-osThreadId_t transmitHandle;
-uint32_t transmitBuffer[ 256 ];
-osStaticThreadDef_t transmitControlBlock;
-const osThreadAttr_t transmit_attributes = {
-		.name = "transmit",
-		.cb_mem = &transmitControlBlock,
-		.cb_size = sizeof(transmitControlBlock),
-		.stack_mem = &transmitBuffer[0],
-		.stack_size = sizeof(transmitBuffer),
+osThreadId_t transmit_task_handle;
+uint32_t transmit_stack_buffer[512];
+osStaticThreadDef_t transmit_control_block;
+const osThreadAttr_t transmit_task_attributes = {
+		.name = "transmit_task",
+		.cb_mem = &transmit_control_block,
+		.cb_size = sizeof(transmit_control_block),
+		.stack_mem = &transmit_stack_buffer[0],
+		.stack_size = sizeof(transmit_stack_buffer),
 		.priority = (osPriority_t) osPriorityAboveNormal,
 };
+
+static char tx_message_buffer[512];
 /* Definitions for monitor */
-osThreadId_t monitorHandle;
-uint32_t monitorBuffer[ 256 ];
-osStaticThreadDef_t monitorControlBlock;
-const osThreadAttr_t monitor_attributes = {
-		.name = "monitor",
-		.cb_mem = &monitorControlBlock,
-		.cb_size = sizeof(monitorControlBlock),
-		.stack_mem = &monitorBuffer[0],
-		.stack_size = sizeof(monitorBuffer),
+osThreadId_t monitor_task_handle;
+uint32_t monitor_stack_buffer[256];
+osStaticThreadDef_t monitor_control_block;
+const osThreadAttr_t monitor_task_attributes = {
+		.name = "monitor_task",
+		.cb_mem = &monitor_control_block,
+		.cb_size = sizeof(monitor_control_block),
+		.stack_mem = &monitor_stack_buffer[0],
+		.stack_size = sizeof(monitor_stack_buffer),
 		.priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for transmitQue */
-osMessageQueueId_t transmitQueHandle;
-uint8_t transmitQueBuffer[ 6 * sizeof( uint16_t ) ];
-osStaticMessageQDef_t transmitQueControlBlock;
-const osMessageQueueAttr_t transmitQue_attributes = {
-		.name = "transmitQue",
-		.cb_mem = &transmitQueControlBlock,
-		.cb_size = sizeof(transmitQueControlBlock),
-		.mq_mem = &transmitQueBuffer,
-		.mq_size = sizeof(transmitQueBuffer)
 };
 
 /* Private function prototypes -----------------------------------------------*/
-/* USER CODE BEGIN FunctionPrototypes */
 
-/* USER CODE END FunctionPrototypes */
-
+/**
+ * @brief Serialize a transmit packet into the UART text buffer.
+ * @param pkt Packet to serialize.
+ * @param buf Destination character buffer.
+ * @param size Size of the destination buffer in bytes.
+ * @return Number of bytes written, or `-1` if the buffer is too small.
+ */
 static int serialize_tx_packet(const tx_packet_t *pkt, char *buf, size_t size);
+
+/**
+ * @brief Append formatted text to a partially filled character buffer.
+ * @param buf Destination character buffer.
+ * @param size Total size of the destination buffer in bytes.
+ * @param len Current string length already stored in the buffer.
+ * @param format Printf-style format string.
+ * @return Updated string length, or `-1` on overflow or formatting error.
+ */
+static int append_to_buffer(char *buf, size_t size, int len, const char *format, ...);
+
+/**
+ * @brief Convert a sample and channel pair into a linear DMA buffer index.
+ * @param sample Sample index within the current DSP frame.
+ * @param channel ADC channel index within the scan sequence.
+ * @return Flattened array index for the DMA buffer.
+ */
+static uint32_t get_adc_buffer_index(uint32_t sample, uint32_t channel);
+
+/**
+ * @brief Estimate VDDA in millivolts from the measured VREFINT sample.
+ * @param vref_raw Raw ADC reading for the internal reference channel.
+ * @return Supply voltage in millivolts, or `0` if the reference sample is invalid.
+ */
+static uint32_t calculate_vdda_mv(uint16_t vref_raw);
+
+/**
+ * @brief Reset runtime counters used by the DSP pipeline.
+ */
+static void reset_dsp_runtime_state(void);
+
+/**
+ * @brief Start the ADC DMA transfers and timer sources used by the DSP pipeline.
+ */
+static void start_sampling_pipeline(void);
+
+/**
+ * @brief Prepare a fresh transmit packet before filling it with ADC data.
+ * @param packet Packet buffer to initialize.
+ */
+static void prepare_tx_packet(tx_packet_t *packet);
+
+/**
+ * @brief Convert the latest DMA frame into engineering units.
+ * @param packet Packet buffer that receives the converted values.
+ */
+static void fill_tx_packet_from_dma(tx_packet_t *packet);
+
+/**
+ * @brief Process one DSP scheduling tick and publish a frame if one is ready.
+ * @param last_adc1_frame Last ADC1 frame counter consumed by the DSP task.
+ * @param last_adc2_frame Last ADC2 frame counter consumed by the DSP task.
+ */
+static void process_dsp_tick(uint32_t *last_adc1_frame, uint32_t *last_adc2_frame);
+
+/**
+ * @brief Atomically swap the published and working transmit buffers.
+ */
 static void swap_tx_buffers(void);
 
-void StartDefaultTask(void *argument);
-void StartDSP(void *argument);
-void transmitStart(void *argument);
-void startMonitor(void *argument);
+static void start_default_task(void *argument);
+static void start_dsp_task(void *argument);
+static void start_transmit_task(void *argument);
+static void start_monitor_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -197,88 +221,181 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
  * @retval None
  */
 void MX_FREERTOS_Init(void) {
-	/* USER CODE BEGIN Init */
 
-	/* USER CODE END Init */
-
-	/* USER CODE BEGIN RTOS_MUTEX */
 	/* add mutexes, ... */
-	/* USER CODE END RTOS_MUTEX */
 
-	/* USER CODE BEGIN RTOS_SEMAPHORES */
 	/* add semaphores, ... */
-	/* USER CODE END RTOS_SEMAPHORES */
 
-	/* USER CODE BEGIN RTOS_TIMERS */
 	/* start timers, add new ones, ... */
-	/* USER CODE END RTOS_TIMERS */
 
-	/* USER CODE BEGIN RTOS_QUEUES */
 	/* add queues, ... */
-	/* USER CODE END RTOS_QUEUES */
 
 	/* Create the thread(s) */
 	/* creation of defaultTask */
-	defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+	default_task_handle = osThreadNew(start_default_task, NULL, &default_task_attributes);
 
 	/* creation of dsp */
-	dspHandle = osThreadNew(StartDSP, NULL, &dsp_attributes);
+	dsp_task_handle = osThreadNew(start_dsp_task, NULL, &dsp_task_attributes);
 
 	/* creation of transmit */
-	transmitHandle = osThreadNew(transmitStart, NULL, &transmit_attributes);
+	transmit_task_handle = osThreadNew(start_transmit_task, NULL, &transmit_task_attributes);
 
 	/* creation of monitor */
-	monitorHandle = osThreadNew(startMonitor, NULL, &monitor_attributes);
+	monitor_task_handle = osThreadNew(start_monitor_task, NULL, &monitor_task_attributes);
 
-	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
-	/* USER CODE END RTOS_THREADS */
 
-	/* USER CODE BEGIN RTOS_EVENTS */
 	/* add events, ... */
-	/* USER CODE END RTOS_EVENTS */
 
 }
 
-/* USER CODE BEGIN Header_StartDefaultTask */
 /**
  * @brief  Function implementing the defaultTask thread.
  * @param  argument: Not used
  * @retval None
  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+static void start_default_task(void *argument)
 {
   for (;;)
   {
-    osThreadFlagsSet(transmitHandle, TX_FLAG_SEND);
     osDelay(1000);
   }
 }
 
-/* USER CODE BEGIN Header_StartDSP */
 /**
  * @brief Function implementing the dsp thread.
  * @param argument: Not used
  * @retval None
  */
-/* USER CODE END Header_StartDSP */
 
-/* USER CODE BEGIN StartDSP */
-void StartDSP(void *argument)
+static void start_dsp_task(void *argument)
 {
 	uint32_t flags;
 
 	uint32_t last_adc1_frame = 0U;
 	uint32_t last_adc2_frame = 0U;
 
-	dsp_sequence = 0U;
+	(void)argument;
 
+	reset_dsp_runtime_state();
+	start_sampling_pipeline();
+
+	for (;;)
+	{
+		flags = osThreadFlagsWait(DSP_FLAG_TICK, osFlagsWaitAny, osWaitForever);
+
+		if ((flags & DSP_FLAG_TICK) != 0U)
+		{
+			process_dsp_tick(&last_adc1_frame, &last_adc2_frame);
+		}
+	}
+}
+
+/**
+ * @brief Function implementing the transmit thread.
+ * @param argument: Not used
+ * @retval None
+ */
+static void start_transmit_task(void *argument)
+{
+  uint32_t flags;
+	tx_packet_t current_tx_packet;
+  int length;
+
+	(void)argument;
+
+  for (;;)
+  {
+    flags = osThreadFlagsWait(TX_FLAG_SEND, osFlagsWaitAny, osWaitForever);
+
+    if ((flags & TX_FLAG_SEND) != 0U)
+    {
+      taskENTER_CRITICAL();
+			current_tx_packet = *published_tx_packet;
+      taskEXIT_CRITICAL();
+
+			length = serialize_tx_packet(&current_tx_packet, tx_message_buffer, sizeof(tx_message_buffer));
+      if (length > 0)
+      {
+        HAL_UART_Transmit(&huart1, (uint8_t *)tx_message_buffer, (uint16_t)length, HAL_MAX_DELAY);
+      }
+
+			tx_last_sent_debug = current_tx_packet;
+    }
+  }
+}
+
+/**
+ * @brief Function implementing the monitor thread.
+ * @param argument: Not used
+ * @retval None
+ */
+static void start_monitor_task(void *argument)
+{
+	(void)argument;
+
+	/* Infinite loop */
+	for(;;)
+	{
+		osDelay(1);
+	}
+}
+
+/**
+ * @brief Atomically publish the latest completed packet buffer.
+ */
+static void swap_tx_buffers(void)
+{
+    taskENTER_CRITICAL();
+	tx_packet_t *tmp = published_tx_packet;
+	published_tx_packet = working_tx_packet;
+	working_tx_packet = tmp;
+    taskEXIT_CRITICAL();
+}
+
+/**
+ * @brief Flatten a sample and channel coordinate into the DMA buffer layout.
+ * @param sample Sample index within the current DSP frame.
+ * @param channel Channel index within the ADC scan sequence.
+ * @return Flattened DMA buffer index.
+ */
+static uint32_t get_adc_buffer_index(uint32_t sample, uint32_t channel)
+{
+	return (sample * ADC_CH_PER_ADC) + channel;
+}
+
+/**
+ * @brief Convert the internal VREF sample into an estimated VDDA value.
+ * @param vref_raw Raw ADC sample from the VREFINT channel.
+ * @return Supply voltage in millivolts, or `0` when the sample is invalid.
+ */
+static uint32_t calculate_vdda_mv(uint16_t vref_raw)
+{
+	if (vref_raw == 0U)
+	{
+		return 0U;
+	}
+
+	return ((uint32_t)(*VREFINT_CAL_ADDR) * 3300UL) / (uint32_t)vref_raw;
+}
+
+/**
+ * @brief Reset DSP counters and packet sequencing state.
+ */
+static void reset_dsp_runtime_state(void)
+{
+	dsp_sequence = 0U;
 	adc1_frame_count = 0U;
 	adc2_frame_count = 0U;
 	adc_overrun_count = 0U;
-	adc_missed_count  = 0U;
+	adc_missed_count = 0U;
+}
 
+/**
+ * @brief Start the DMA-backed sampling pipeline and its scheduling timers.
+ */
+static void start_sampling_pipeline(void)
+{
 	if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc1_buf, ADC_BUF_LEN) != HAL_OK)
 	{
 		Error_Handler();
@@ -289,160 +406,199 @@ void StartDSP(void *argument)
 		Error_Handler();
 	}
 
-	/* Start ADC trigger timer first */
-	if (HAL_LPTIM_PWM_Start(&hlptim1, 1499, 750) != HAL_OK)
+	if (HAL_LPTIM_PWM_Start(&hlptim1, ADC_TRIGGER_PERIOD, ADC_TRIGGER_PULSE) != HAL_OK)
 	{
 		Error_Handler();
 	}
 
-	/* Optional small startup guard so DSP tick is phase-shifted later than ADC frame completion */
-	osDelay(1);
+	osDelay(DSP_STARTUP_DELAY_MS);
 
-	/* Start DSP scheduler timer */
-	if (HAL_LPTIM_Counter_Start_IT(&hlptim2, 2999) != HAL_OK)
+	if (HAL_LPTIM_Counter_Start_IT(&hlptim2, DSP_TICK_PERIOD) != HAL_OK)
 	{
 		Error_Handler();
 	}
+}
 
-	for (;;)
+/**
+ * @brief Initialize metadata for a packet that is about to be filled.
+ * @param packet Packet buffer to prepare.
+ */
+static void prepare_tx_packet(tx_packet_t *packet)
+{
+	packet->sequence = ++dsp_sequence;
+	packet->timestamp = dsp_sequence;
+	packet->status_flags = DSP_STATUS_OK;
+}
+
+/**
+ * @brief Convert the raw ADC DMA buffers into millivolt and temperature values.
+ * @param packet Packet buffer that receives the converted results.
+ */
+static void fill_tx_packet_from_dma(tx_packet_t *packet)
+{
+	for (uint32_t sample = 0U; sample < ADC_SAMPLES_PER_DSP; sample++)
 	{
-		flags = osThreadFlagsWait(DSP_FLAG_TICK, osFlagsWaitAny, osWaitForever);
+		uint32_t vref_index = get_adc_buffer_index(sample, ADC2_VREF_INDEX);
+		uint32_t temp_index = get_adc_buffer_index(sample, ADC2_TEMP_INDEX);
 
-		if ((flags & DSP_FLAG_TICK) != 0U)
+		packet->vdda_mv[sample] = calculate_vdda_mv(adc2_buf[vref_index]);
+		if (packet->vdda_mv[sample] == 0U)
 		{
-			uint32_t adc1_now = adc1_frame_count;
-			uint32_t adc2_now = adc2_frame_count;
+			packet->status_flags |= DSP_STATUS_ADC_LATE;
+		}
 
-			uint32_t adc1_delta = adc1_now - last_adc1_frame;
-			uint32_t adc2_delta = adc2_now - last_adc2_frame;
+		for (uint32_t channel = 0U; channel < ADC_CH_PER_ADC; channel++)
+		{
+			uint32_t adc_index = get_adc_buffer_index(sample, channel);
 
-			tx_working->sequence = ++dsp_sequence;
-			tx_working->timestamp = dsp_sequence;   /* temporary placeholder */
-			tx_working->status_flags = DSP_STATUS_OK;
+			packet->adc1_mv[sample][channel] = __HAL_ADC_CALC_DATA_TO_VOLTAGE(
+					packet->vdda_mv[sample],
+					adc1_buf[adc_index],
+					ADC_RESOLUTION_16B);
 
-			if ((adc1_delta == 1U) && (adc2_delta == 1U))
-			{
-				for (uint32_t s = 0; s < ADC_SAMPLES_PER_DSP; s++)
-				{
-					uint32_t vref_cal = (uint32_t)(*VREFINT_CAL_ADDR);
-					uint32_t vref_raw = (uint32_t)adc2_buf[s * ADC_CH_PER_ADC + 3U];
+			packet->adc2_mv[sample][channel] = __HAL_ADC_CALC_DATA_TO_VOLTAGE(
+					packet->vdda_mv[sample],
+					adc2_buf[adc_index],
+					ADC_RESOLUTION_16B);
+		}
 
-					if (vref_raw != 0U)
-					{
-					  tx_working->vdda_mv[s] = (vref_cal * 3300UL) / vref_raw;
-					}
-					else
-					{
-					  tx_working->vdda_mv[s] = 0U;
-					  tx_working->status_flags |= DSP_STATUS_ADC_LATE;
-					}
+		packet->temperature_c[sample] = __HAL_ADC_CALC_TEMPERATURE(
+				packet->vdda_mv[sample],
+				adc2_buf[temp_index],
+				ADC_RESOLUTION_16B);
+	}
+}
 
-					for (uint32_t ch = 0; ch < ADC_CH_PER_ADC; ch++)
-					{
-						uint32_t adc1_raw = adc1_buf[s * ADC_CH_PER_ADC + ch];
-						uint32_t adc2_raw = adc2_buf[s * ADC_CH_PER_ADC + ch];
+/**
+ * @brief Consume the latest ADC frame counts and publish a packet when valid.
+ * @param last_adc1_frame Last ADC1 frame counter consumed by the DSP task.
+ * @param last_adc2_frame Last ADC2 frame counter consumed by the DSP task.
+ */
+static void process_dsp_tick(uint32_t *last_adc1_frame, uint32_t *last_adc2_frame)
+{
+	uint32_t adc1_now = adc1_frame_count;
+	uint32_t adc2_now = adc2_frame_count;
+	uint32_t adc1_delta = adc1_now - *last_adc1_frame;
+	uint32_t adc2_delta = adc2_now - *last_adc2_frame;
 
-						tx_working->adc1_mv[s][ch] =
-								__HAL_ADC_CALC_DATA_TO_VOLTAGE(tx_working->vdda_mv[s],
-										adc1_raw,
-										ADC_RESOLUTION_16B);
+	prepare_tx_packet(working_tx_packet);
 
-						tx_working->adc2_mv[s][ch] =
-								__HAL_ADC_CALC_DATA_TO_VOLTAGE(tx_working->vdda_mv[s],
-										adc2_raw,
-										ADC_RESOLUTION_16B);
-					}
+	if ((adc1_delta == 1U) && (adc2_delta == 1U))
+	{
+		fill_tx_packet_from_dma(working_tx_packet);
+		*last_adc1_frame = adc1_now;
+		*last_adc2_frame = adc2_now;
+		swap_tx_buffers();
+		return;
+	}
 
-					tx_working->temperature_c[s] =
-							__HAL_ADC_CALC_TEMPERATURE(tx_working->vdda_mv[s],
-									adc2_buf[s * ADC_CH_PER_ADC + 2U],
-									ADC_RESOLUTION_16B);
-				}
+	if ((adc1_delta == 0U) || (adc2_delta == 0U))
+	{
+		adc_overrun_count++;
+		working_tx_packet->status_flags |= DSP_STATUS_ADC_LATE;
+		return;
+	}
 
-				last_adc1_frame = adc1_now;
-				last_adc2_frame = adc2_now;
+	adc_missed_count++;
+	*last_adc1_frame = adc1_now;
+	*last_adc2_frame = adc2_now;
+	working_tx_packet->status_flags |= DSP_STATUS_ADC_MISSED;
+}
 
-				/* later: send frame to transmit thread */
-			}
-			else if ((adc1_delta == 0U) || (adc2_delta == 0U))
-			{
-				adc_overrun_count++;
-				tx_working->status_flags |= DSP_STATUS_ADC_LATE;
-			}
-			else
-			{
-				adc_missed_count++;
-				last_adc1_frame = adc1_now;
-				last_adc2_frame = adc2_now;
-			}
+/**
+ * @brief Append formatted data to an output buffer with bounds checking.
+ * @param buf Destination character buffer.
+ * @param size Total size of the destination buffer.
+ * @param len Current number of valid bytes already present.
+ * @param format Printf-style format string.
+ * @return Updated string length, or `-1` if the write would overflow.
+ */
+static int append_to_buffer(char *buf, size_t size, int len, const char *format, ...)
+{
+	int written;
+	va_list args;
+
+	if ((len < 0) || ((size_t)len >= size))
+	{
+		return -1;
+	}
+
+	va_start(args, format);
+	written = vsnprintf(buf + len, size - (size_t)len, format, args);
+	va_end(args);
+
+	if ((written < 0) || ((size_t)written >= (size - (size_t)len)))
+	{
+		return -1;
+	}
+
+	return len + written;
+}
+
+/**
+ * @brief Format one transmit packet as a human-readable UART message.
+ * @param pkt Packet to serialize.
+ * @param buf Destination character buffer.
+ * @param size Total size of the destination buffer.
+ * @return Number of bytes written, or `-1` if the buffer is too small.
+ */
+static int serialize_tx_packet(const tx_packet_t *pkt, char *buf, size_t size)
+{
+	int len = 0;
+
+	len = append_to_buffer(buf, size, len,
+			"SEQ:%lu TS:%lu FLAGS:0x%08lX\n",
+			(unsigned long)pkt->sequence,
+			(unsigned long)pkt->timestamp,
+			(unsigned long)pkt->status_flags);
+
+	for (uint32_t sample = 0U; (sample < ADC_SAMPLES_PER_DSP) && (len >= 0); sample++)
+	{
+		len = append_to_buffer(buf, size, len,
+				"SAMPLE %u: VDDA=%lu mV TEMP=%ld C ADC1=",
+				(unsigned int)sample,
+				(unsigned long)pkt->vdda_mv[sample],
+				(long)pkt->temperature_c[sample]);
+
+		for (uint32_t channel = 0U; (channel < ADC_CH_PER_ADC) && (len >= 0); channel++)
+		{
+			len = append_to_buffer(buf, size, len,
+					"%lu%s",
+					(unsigned long)pkt->adc1_mv[sample][channel],
+					(channel + 1U < ADC_CH_PER_ADC) ? "," : " ");
+		}
+
+		len = append_to_buffer(buf, size, len, "ADC2=");
+
+		for (uint32_t channel = 0U; (channel < ADC_CH_PER_ADC) && (len >= 0); channel++)
+		{
+			len = append_to_buffer(buf, size, len,
+					"%lu%s",
+					(unsigned long)pkt->adc2_mv[sample][channel],
+					(channel + 1U < ADC_CH_PER_ADC) ? "," : "\n");
 		}
 	}
-}
-/* USER CODE END StartDSP */
 
-/* USER CODE BEGIN Header_transmitStart */
-/**
- * @brief Function implementing the transmit thread.
- * @param argument: Not used
- * @retval None
- */
-/* USER CODE END Header_transmitStart */
-void transmitStart(void *argument)
-{
-  uint32_t flags;
-  char tx_buffer[512];
-  tx_packet_t current_packet;
-  int length;
-
-  for (;;)
-  {
-    flags = osThreadFlagsWait(TX_FLAG_SEND, osFlagsWaitAny, osWaitForever);
-
-    if ((flags & TX_FLAG_SEND) != 0U)
-    {
-      taskENTER_CRITICAL();
-      current_packet = *tx_published;
-      taskEXIT_CRITICAL();
-
-      length = serialize_tx_packet(&current_packet, tx_buffer, sizeof(tx_buffer));
-      if (length > 0)
-      {
-        HAL_UART_Transmit(&huart1, (uint8_t *)tx_buffer, (uint16_t)length, HAL_MAX_DELAY);
-      }
-
-      tx_last_sent_debug = current_packet;
-    }
-  }
-}
-
-/* USER CODE BEGIN Header_startMonitor */
-/**
- * @brief Function implementing the monitor thread.
- * @param argument: Not used
- * @retval None
- */
-/* USER CODE END Header_startMonitor */
-void startMonitor(void *argument)
-{
-	/* USER CODE BEGIN startMonitor */
-	/* Infinite loop */
-	for(;;)
-	{
-		osDelay(1);
-	}
-	/* USER CODE END startMonitor */
+	return len;
 }
 
 /* Private application code --------------------------------------------------*/
-/* USER CODE BEGIN Application */
+/**
+ * @brief Wake the DSP task each time the LPTIM2 scheduler period elapses.
+ * @param hlptim Timer instance that raised the callback.
+ */
 void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
 {
 	if (hlptim->Instance == LPTIM2)
 	{
-		osThreadFlagsSet(dspHandle, DSP_FLAG_TICK);
+		osThreadFlagsSet(dsp_task_handle, DSP_FLAG_TICK);
 	}
 }
 
+/**
+ * @brief Count completed ADC DMA frames.
+ * @param hadc ADC instance that completed its conversion sequence.
+ */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
 	if (hadc->Instance == ADC1)
@@ -455,12 +611,15 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 	}
 }
 
+/**
+ * @brief Trigger packet transmission when the user wakeup button is pressed.
+ * @param GPIO_Pin GPIO pin number associated with the EXTI event.
+ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == WAKEUP_Pin)
     {
-        osThreadFlagsSet(transmitHandle, TX_FLAG_SEND);
+		osThreadFlagsSet(transmit_task_handle, TX_FLAG_SEND);
     }
 }
-/* USER CODE END Application */
 

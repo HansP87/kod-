@@ -64,7 +64,6 @@
   #define HSI_VALUE    ((uint32_t)64000000) /*!< Value of the Internal oscillator in Hz*/
 #endif /* HSI_VALUE */
 
-
 /**
   * @}
   */
@@ -354,7 +353,6 @@ void SystemCoreClockUpdate (void)
   uint32_t pllp, pllsource, pllm, pllfracen, hsivalue, tmp;
   uint32_t common_system_clock;
   float_t fracn1, pllvco;
-
 
   /* Get SYSCLK source -------------------------------------------------------*/
 

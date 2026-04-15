@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    usart.c
@@ -16,13 +15,8 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
-
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -33,13 +27,6 @@ DMA_HandleTypeDef hdma_usart1_tx;
 void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -67,28 +54,22 @@ void MX_USART1_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
 
 }
 
-void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+void HAL_UART_MspInit(UART_HandleTypeDef* uart_handle)
 {
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(uartHandle->Instance==USART1)
+  GPIO_InitTypeDef gpio_init_struct = {0};
+  RCC_PeriphCLKInitTypeDef periph_clk_init_struct = {0};
+  if(uart_handle->Instance==USART1)
   {
-  /* USER CODE BEGIN USART1_MspInit 0 */
-
-  /* USER CODE END USART1_MspInit 0 */
 
   /** Initializes the peripherals clock
   */
-    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART1;
-    PeriphClkInitStruct.Usart16ClockSelection = RCC_USART16910CLKSOURCE_D2PCLK2;
-    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    periph_clk_init_struct.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+    periph_clk_init_struct.Usart16ClockSelection = RCC_USART16910CLKSOURCE_D2PCLK2;
+    if (HAL_RCCEx_PeriphCLKConfig(&periph_clk_init_struct) != HAL_OK)
     {
       Error_Handler();
     }
@@ -101,12 +82,12 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     PA10     ------> USART1_RX
     PA9     ------> USART1_TX
     */
-    GPIO_InitStruct.Pin = VCP_RX_Pin|VCP_TX_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    gpio_init_struct.Pin = VCP_RX_Pin|VCP_TX_Pin;
+    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_LOW;
+    gpio_init_struct.Alternate = GPIO_AF7_USART1;
+    HAL_GPIO_Init(GPIOA, &gpio_init_struct);
 
     /* USART1 DMA Init */
     /* USART1_RX Init */
@@ -125,7 +106,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
       Error_Handler();
     }
 
-    __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart1_rx);
+    __HAL_LINKDMA(uart_handle,hdmarx,hdma_usart1_rx);
 
     /* USART1_TX Init */
     hdma_usart1_tx.Instance = DMA1_Stream2;
@@ -143,22 +124,17 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
       Error_Handler();
     }
 
-    __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart1_tx);
+    __HAL_LINKDMA(uart_handle,hdmatx,hdma_usart1_tx);
 
-  /* USER CODE BEGIN USART1_MspInit 1 */
-
-  /* USER CODE END USART1_MspInit 1 */
   }
 }
 
-void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
+void HAL_UART_MspDeInit(UART_HandleTypeDef* uart_handle)
 {
 
-  if(uartHandle->Instance==USART1)
+  if(uart_handle->Instance==USART1)
   {
-  /* USER CODE BEGIN USART1_MspDeInit 0 */
 
-  /* USER CODE END USART1_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_USART1_CLK_DISABLE();
 
@@ -169,15 +145,9 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
     HAL_GPIO_DeInit(GPIOA, VCP_RX_Pin|VCP_TX_Pin);
 
     /* USART1 DMA DeInit */
-    HAL_DMA_DeInit(uartHandle->hdmarx);
-    HAL_DMA_DeInit(uartHandle->hdmatx);
-  /* USER CODE BEGIN USART1_MspDeInit 1 */
+    HAL_DMA_DeInit(uart_handle->hdmarx);
+    HAL_DMA_DeInit(uart_handle->hdmatx);
 
-  /* USER CODE END USART1_MspDeInit 1 */
   }
 }
-
-/* USER CODE BEGIN 1 */
-
-/* USER CODE END 1 */
 

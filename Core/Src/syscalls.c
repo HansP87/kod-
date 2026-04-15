@@ -30,26 +30,36 @@
 #include <sys/time.h>
 #include <sys/times.h>
 
-
 /* Variables */
 extern int __io_putchar(int ch) __attribute__((weak));
 extern int __io_getchar(void) __attribute__((weak));
 
-
 char *__env[1] = { 0 };
 char **environ = __env;
 
-
 /* Functions */
+/**
+ * @brief Stub for semihosting monitor initialization.
+ */
 void initialise_monitor_handles()
 {
 }
 
+/**
+ * @brief Return a fixed process identifier for the embedded runtime.
+ * @return Always returns `1`.
+ */
 int _getpid(void)
 {
   return 1;
 }
 
+/**
+ * @brief Report that POSIX signal delivery is unsupported.
+ * @param pid Unused process identifier.
+ * @param sig Unused signal number.
+ * @return Always returns `-1` and sets `errno` to `EINVAL`.
+ */
 int _kill(int pid, int sig)
 {
   (void)pid;
@@ -58,18 +68,29 @@ int _kill(int pid, int sig)
   return -1;
 }
 
+/**
+ * @brief Terminate execution by trapping in an infinite loop.
+ * @param status Exit status passed to the low-level runtime.
+ */
 void _exit (int status)
 {
   _kill(status, -1);
   while (1) {}    /* Make sure we hang here */
 }
 
+/**
+ * @brief Read bytes from the configured low-level input hook.
+ * @param file Unused file descriptor.
+ * @param ptr Destination buffer.
+ * @param len Number of bytes requested.
+ * @return Number of bytes read.
+ */
 __attribute__((weak)) int _read(int file, char *ptr, int len)
 {
   (void)file;
-  int DataIdx;
+  int data_index;
 
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
+  for (data_index = 0; data_index < len; data_index++)
   {
     *ptr++ = __io_getchar();
   }
@@ -77,25 +98,42 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
   return len;
 }
 
+/**
+ * @brief Write bytes using the configured low-level output hook.
+ * @param file Unused file descriptor.
+ * @param ptr Source buffer.
+ * @param len Number of bytes to write.
+ * @return Number of bytes written.
+ */
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
   (void)file;
-  int DataIdx;
+  int data_index;
 
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
+  for (data_index = 0; data_index < len; data_index++)
   {
     __io_putchar(*ptr++);
   }
   return len;
 }
 
+/**
+ * @brief Report that close is unsupported for this runtime.
+ * @param file Unused file descriptor.
+ * @return Always returns `-1`.
+ */
 int _close(int file)
 {
   (void)file;
   return -1;
 }
 
-
+/**
+ * @brief Mark the file descriptor as a character device.
+ * @param file Unused file descriptor.
+ * @param st Output stat structure.
+ * @return Always returns `0`.
+ */
 int _fstat(int file, struct stat *st)
 {
   (void)file;
@@ -103,12 +141,24 @@ int _fstat(int file, struct stat *st)
   return 0;
 }
 
+/**
+ * @brief Report all file descriptors as terminal-like devices.
+ * @param file Unused file descriptor.
+ * @return Always returns `1`.
+ */
 int _isatty(int file)
 {
   (void)file;
   return 1;
 }
 
+/**
+ * @brief Report that seeking is unsupported for this runtime.
+ * @param file Unused file descriptor.
+ * @param ptr Unused offset.
+ * @param dir Unused seek origin.
+ * @return Always returns `0`.
+ */
 int _lseek(int file, int ptr, int dir)
 {
   (void)file;

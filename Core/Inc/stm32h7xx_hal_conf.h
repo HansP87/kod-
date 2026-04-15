@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    stm32h7xx_hal_conf.h
@@ -16,7 +15,6 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef STM32H7xx_HAL_CONF_H
 #define STM32H7xx_HAL_CONF_H
@@ -63,7 +61,7 @@
 /* #define HAL_SMBUS_MODULE_ENABLED   */
 /* #define HAL_IWDG_MODULE_ENABLED   */
 #define HAL_LPTIM_MODULE_ENABLED
-/* #define HAL_LTDC_MODULE_ENABLED   */
+/* #define HAL_LTDC_MODULE_ENABLED */
 /* #define HAL_QSPI_MODULE_ENABLED   */
 /* #define HAL_RAMECC_MODULE_ENABLED   */
 /* #define HAL_RNG_MODULE_ENABLED   */
