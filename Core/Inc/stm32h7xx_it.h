@@ -86,6 +86,12 @@ void DMA1_Stream3_IRQHandler(void);
   * @brief Handle TIM1 update interrupts.
   */
 void TIM1_UP_IRQHandler(void);
+
+/**
+  * @brief Handle USART1 global interrupts.
+  */
+void USART1_IRQHandler(void);
+
 /**
   * @brief Handle the wakeup button EXTI line.
   */

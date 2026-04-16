@@ -49,31 +49,55 @@ static uint32_t returned_tx_packet_read_index = 0U;
 
 static volatile tx_packet_t tx_last_sent_debug;
 static uint32_t dsp_sequence = 0U;
+static uint32_t app_mode_state = APP_MODE_STREAMING;
 
 __attribute__((section(".dma_buffer"), aligned(32)))
 uint16_t adc1_buf[ADC_BUF_LEN];
 
+/** Append formatted text to the packet serialization buffer. */
 __attribute__((section(".dma_buffer"), aligned(32)))
+/** Convert a sample/channel pair into the linear DMA buffer index. */
 uint16_t adc2_buf[ADC_BUF_LEN];
+/** Convert the internal reference measurement into the current VDDA estimate. */
 
+/** Initialize a packet header before the latest samples are copied in. */
 static int append_to_buffer(char *buf, size_t size, int len, const char *format, ...);
+/** Fill a packet structure from the current ADC DMA buffers. */
 static uint32_t get_adc_buffer_index(uint32_t sample, uint32_t channel);
+/** Reset the transmit buffer ownership state to its startup configuration. */
 static uint32_t calculate_vdda_mv(uint16_t vref_raw);
+/** Swap the current ready packet atomically. */
 static void prepare_tx_packet(tx_packet_t *packet);
+/** Load the write index for the returned-packet queue. */
 static void fill_tx_packet_from_dma(tx_packet_t *packet);
+/** Load the read index for the returned-packet queue. */
 static void initialize_tx_buffer_ownership(void);
+/** Store the write index for the returned-packet queue. */
 static tx_packet_t *exchange_ready_tx_packet(tx_packet_t *packet);
+/** Store the read index for the returned-packet queue. */
 static uint32_t load_returned_tx_write_index(void);
+/** Load the latest trigger timestamp used for packet age reporting. */
 static uint32_t load_returned_tx_read_index(void);
+/** Store the latest ADC1 frame-ready timestamp. */
 static void store_returned_tx_write_index(uint32_t write_index);
+/** Store the latest ADC2 frame-ready timestamp. */
 static void store_returned_tx_read_index(uint32_t read_index);
+/** Select the newest ADC-ready timestamp between both converters. */
 static uint32_t load_button_event_timestamp_us(void);
+/** Publish the working packet and acquire a new free packet buffer. */
 static void store_adc1_ready_timestamp_us(uint32_t timestamp_us);
+/** Return a packet buffer to the free stack. */
 static void store_adc2_ready_timestamp_us(uint32_t timestamp_us);
+/** Pop a free packet buffer from the free stack. */
 static uint32_t get_latest_sample_ready_timestamp_us(void);
+/** Move transmit buffers returned by the TX task back to the free stack. */
 static void publish_working_tx_packet(void);
+/** Queue a packet buffer to be reclaimed by the DSP task later. */
 static void push_free_tx_packet(tx_packet_t *packet);
 static tx_packet_t *pop_free_tx_packet(void);
+/**
+ * @brief Reset the application-owned runtime state back to power-up defaults.
+ */
 static void reclaim_returned_tx_packets(void);
 static int queue_returned_tx_packet(tx_packet_t *packet);
 
@@ -84,8 +108,12 @@ void app_runtime_reset(void)
 	adc2_frame_count = 0U;
 	adc_overrun_count = 0U;
 	adc_missed_count = 0U;
+	app_runtime_set_mode(APP_MODE_STREAMING);
 }
 
+/**
+ * @brief Initialize the transmit buffer ownership model and timestamp state.
+ */
 void app_runtime_initialize_tx_buffer_ownership(void)
 {
 	initialize_tx_buffer_ownership();
@@ -94,6 +122,9 @@ void app_runtime_initialize_tx_buffer_ownership(void)
 	store_adc2_ready_timestamp_us(0U);
 }
 
+/**
+ * @brief Start the ADC DMA engines and timer sources that drive sampling.
+ */
 void app_runtime_start_sampling_pipeline(void)
 {
 	if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc1_buf, ADC_BUF_LEN) != HAL_OK)
@@ -119,6 +150,11 @@ void app_runtime_start_sampling_pipeline(void)
 	}
 }
 
+/**
+ * @brief Process one DSP scheduling tick and publish a packet when both ADCs are ready.
+ * @param last_adc1_frame Last ADC1 frame counter processed by the caller.
+ * @param last_adc2_frame Last ADC2 frame counter processed by the caller.
+ */
 void app_runtime_process_dsp_tick(uint32_t *last_adc1_frame, uint32_t *last_adc2_frame)
 {
 	uint32_t adc1_now = adc1_frame_count;
@@ -152,6 +188,10 @@ void app_runtime_process_dsp_tick(uint32_t *last_adc1_frame, uint32_t *last_adc2
 	working_tx_packet->status_flags |= DSP_STATUS_ADC_MISSED;
 }
 
+/**
+ * @brief Hand the newest ready packet to the TX task and queue the old one for reclamation.
+ * @param current_tx_packet Pointer to the caller-owned packet pointer.
+ */
 void app_runtime_claim_latest_tx_packet(tx_packet_t **current_tx_packet)
 {
 	tx_packet_t *ready_packet = exchange_ready_tx_packet(NULL);
@@ -169,11 +209,24 @@ void app_runtime_claim_latest_tx_packet(tx_packet_t **current_tx_packet)
 	*current_tx_packet = ready_packet;
 }
 
+/**
+ * @brief Compute packet age relative to the latest trigger timestamp.
+ * @param packet Packet whose sample-ready timestamp should be compared.
+ * @return Latency in microseconds.
+ */
 uint32_t app_runtime_get_sample_latency_us(const tx_packet_t *packet)
 {
 	return load_button_event_timestamp_us() - packet->sample_ready_timestamp_us;
 }
 
+/**
+ * @brief Serialize a packet into the line-oriented UART reporting format.
+ * @param pkt Packet to serialize.
+ * @param sample_latency_us Packet age to report in the header line.
+ * @param buf Destination buffer for the ASCII output.
+ * @param size Capacity of @p buf in bytes.
+ * @return Number of bytes written, or `-1` if the output does not fit.
+ */
 int app_runtime_serialize_tx_packet(const tx_packet_t *pkt, uint32_t sample_latency_us, char *buf, size_t size)
 {
 	int len = 0;
@@ -216,11 +269,19 @@ int app_runtime_serialize_tx_packet(const tx_packet_t *pkt, uint32_t sample_late
 	return len;
 }
 
+/**
+ * @brief Store the timestamp of the latest trigger event.
+ * @param timestamp_us Trigger timestamp in microseconds.
+ */
 void app_runtime_set_button_event_timestamp_us(uint32_t timestamp_us)
 {
 	__atomic_store_n(&button_event_timestamp_us, timestamp_us, __ATOMIC_RELEASE);
 }
 
+/**
+ * @brief Record that one ADC DMA frame completed and capture its completion timestamp.
+ * @param hadc ADC instance that raised the completion callback.
+ */
 void app_runtime_record_adc_frame_ready(ADC_HandleTypeDef *hadc)
 {
 	if (hadc->Instance == ADC1)
@@ -235,11 +296,50 @@ void app_runtime_record_adc_frame_ready(ADC_HandleTypeDef *hadc)
 	}
 }
 
+/**
+ * @brief Copy the last transmitted packet into a debug snapshot.
+ * @param packet Packet that was transmitted most recently.
+ */
 void app_runtime_store_last_sent_debug(const tx_packet_t *packet)
 {
 	tx_last_sent_debug = *packet;
 }
 
+/**
+ * @brief Update the application streaming/configuration mode.
+ * @param mode New mode value.
+ */
+void app_runtime_set_mode(app_mode_t mode)
+{
+	__atomic_store_n(&app_mode_state, (uint32_t)mode, __ATOMIC_RELEASE);
+}
+
+/**
+ * @brief Read the current application mode.
+ * @return Current mode value.
+ */
+app_mode_t app_runtime_get_mode(void)
+{
+	return (app_mode_t)__atomic_load_n(&app_mode_state, __ATOMIC_ACQUIRE);
+}
+
+/**
+ * @brief Check whether streaming mode is currently active.
+ * @return Non-zero in streaming mode, otherwise zero.
+ */
+uint32_t app_runtime_is_streaming_mode(void)
+{
+	return (uint32_t)(app_runtime_get_mode() == APP_MODE_STREAMING);
+}
+
+/**
+ * @brief Append formatted text to a bounded output buffer.
+ * @param buf Destination buffer.
+ * @param size Capacity of @p buf.
+ * @param len Current write length.
+ * @param format `printf`-style format string.
+ * @return Updated length, or `-1` if the output would overflow.
+ */
 static int append_to_buffer(char *buf, size_t size, int len, const char *format, ...)
 {
 	int written;
@@ -262,11 +362,22 @@ static int append_to_buffer(char *buf, size_t size, int len, const char *format,
 	return len + written;
 }
 
+/**
+ * @brief Convert a sample/channel pair into a flat DMA buffer index.
+ * @param sample Sample number within the current DSP packet.
+ * @param channel ADC channel index within the sample.
+ * @return Linear index into the DMA buffer.
+ */
 static uint32_t get_adc_buffer_index(uint32_t sample, uint32_t channel)
 {
 	return (sample * ADC_CH_PER_ADC) + channel;
 }
 
+/**
+ * @brief Estimate VDDA from the sampled internal reference voltage.
+ * @param vref_raw Raw VREFINT ADC sample.
+ * @return Estimated VDDA in millivolts.
+ */
 static uint32_t calculate_vdda_mv(uint16_t vref_raw)
 {
 	if (vref_raw == 0U)
@@ -277,6 +388,10 @@ static uint32_t calculate_vdda_mv(uint16_t vref_raw)
 	return ((uint32_t)(*VREFINT_CAL_ADDR) * 3300UL) / (uint32_t)vref_raw;
 }
 
+/**
+ * @brief Initialize the packet header and status fields for a new DSP cycle.
+ * @param packet Packet buffer being prepared.
+ */
 static void prepare_tx_packet(tx_packet_t *packet)
 {
 	packet->sequence = ++dsp_sequence;
@@ -285,6 +400,10 @@ static void prepare_tx_packet(tx_packet_t *packet)
 	packet->status_flags = DSP_STATUS_OK;
 }
 
+/**
+ * @brief Populate a packet from the latest ADC DMA buffers.
+ * @param packet Packet buffer to populate.
+ */
 static void fill_tx_packet_from_dma(tx_packet_t *packet)
 {
 	for (uint32_t sample = 0U; sample < ADC_SAMPLES_PER_DSP; sample++)
@@ -320,6 +439,9 @@ static void fill_tx_packet_from_dma(tx_packet_t *packet)
 	}
 }
 
+/**
+ * @brief Reset packet-buffer ownership to the startup configuration.
+ */
 static void initialize_tx_buffer_ownership(void)
 {
 	working_tx_packet = &tx_packet_buffer_a;
@@ -331,46 +453,77 @@ static void initialize_tx_buffer_ownership(void)
 	store_returned_tx_read_index(0U);
 }
 
+/**
+ * @brief Atomically replace the currently published ready packet.
+ * @param packet Packet to publish, or `NULL` to just take ownership of the current ready packet.
+ * @return Previously published packet, or `NULL` if none was ready.
+ */
 static tx_packet_t *exchange_ready_tx_packet(tx_packet_t *packet)
 {
 	return __atomic_exchange_n(&ready_tx_packet, packet, __ATOMIC_ACQ_REL);
 }
 
+/** @brief Load the returned-packet queue write index. */
 static uint32_t load_returned_tx_write_index(void)
 {
 	return __atomic_load_n(&returned_tx_packet_write_index, __ATOMIC_ACQUIRE);
 }
 
+/** @brief Load the returned-packet queue read index. */
 static uint32_t load_returned_tx_read_index(void)
 {
 	return __atomic_load_n(&returned_tx_packet_read_index, __ATOMIC_RELAXED);
 }
 
+/**
+ * @brief Store the returned-packet queue write index.
+ * @param write_index New write index value.
+ */
 static void store_returned_tx_write_index(uint32_t write_index)
 {
 	__atomic_store_n(&returned_tx_packet_write_index, write_index, __ATOMIC_RELEASE);
 }
 
+/**
+ * @brief Store the returned-packet queue read index.
+ * @param read_index New read index value.
+ */
 static void store_returned_tx_read_index(uint32_t read_index)
 {
 	__atomic_store_n(&returned_tx_packet_read_index, read_index, __ATOMIC_RELEASE);
 }
 
+/**
+ * @brief Load the latest trigger timestamp used for packet age reporting.
+ * @return Trigger timestamp in microseconds.
+ */
 static uint32_t load_button_event_timestamp_us(void)
 {
 	return __atomic_load_n(&button_event_timestamp_us, __ATOMIC_ACQUIRE);
 }
 
+/**
+ * @brief Store the latest ADC1 frame-ready timestamp.
+ * @param timestamp_us Timestamp in microseconds.
+ */
 static void store_adc1_ready_timestamp_us(uint32_t timestamp_us)
 {
 	__atomic_store_n(&adc1_ready_timestamp_us, timestamp_us, __ATOMIC_RELEASE);
 }
 
+/**
+ * @brief Store the latest ADC2 frame-ready timestamp.
+ * @param timestamp_us Timestamp in microseconds.
+ */
 static void store_adc2_ready_timestamp_us(uint32_t timestamp_us)
 {
 	__atomic_store_n(&adc2_ready_timestamp_us, timestamp_us, __ATOMIC_RELEASE);
 }
 
+/**
+ * @brief Choose the newest ADC completion timestamp across both converters.
+ * @return Most recent ADC-ready timestamp in microseconds.
+ */
 static uint32_t get_latest_sample_ready_timestamp_us(void)
 {
 	uint32_t adc1_timestamp_us = __atomic_load_n(&adc1_ready_timestamp_us, __ATOMIC_ACQUIRE);
@@ -384,6 +537,9 @@ static uint32_t get_latest_sample_ready_timestamp_us(void)
 	return adc2_timestamp_us;
 }
 
+/**
+ * @brief Publish the current working packet and acquire a fresh working buffer.
+ */
 static void publish_working_tx_packet(void)
 {
 	tx_packet_t *stale_ready_packet = exchange_ready_tx_packet(working_tx_packet);
@@ -403,6 +559,10 @@ static void publish_working_tx_packet(void)
 	working_tx_packet = next_working_packet;
 }
 
+/**
+ * @brief Return a packet buffer to the free stack.
+ * @param packet Packet buffer to recycle.
+ */
 static void push_free_tx_packet(tx_packet_t *packet)
 {
 	if ((packet == NULL) || (free_tx_packet_count >= 2U))
@@ -414,6 +574,10 @@ static void push_free_tx_packet(tx_packet_t *packet)
 	free_tx_packet_count++;
 }
 
+/**
+ * @brief Pop the next available free packet buffer.
+ * @return Free packet buffer, or `NULL` if none are available.
+ */
 static tx_packet_t *pop_free_tx_packet(void)
 {
 	if (free_tx_packet_count == 0U)
@@ -425,6 +589,9 @@ static tx_packet_t *pop_free_tx_packet(void)
 	return free_tx_packet_stack[free_tx_packet_count];
 }
 
+/**
+ * @brief Reclaim packet buffers that were returned by the transmit task.
+ */
 static void reclaim_returned_tx_packets(void)
 {
 	uint32_t read_index = load_returned_tx_read_index();
@@ -439,6 +606,11 @@ static void reclaim_returned_tx_packets(void)
 	store_returned_tx_read_index(read_index);
 }
 
+/**
+ * @brief Queue a transmitted packet for later reclamation by the DSP task.
+ * @param packet Packet buffer to return.
+ * @return Zero on success, or `-1` if the return queue is full.
+ */
 static int queue_returned_tx_packet(tx_packet_t *packet)
 {
 	uint32_t write_index = returned_tx_packet_write_index;

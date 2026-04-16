@@ -16,6 +16,7 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
+#include <stdint.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
@@ -23,8 +24,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 #include "app_runtime.h"
+#include "command_task.h"
 #include "default_task.h"
 #include "dsp_task.h"
+#include "lptim.h"
 #include "monitor_task.h"
 #include "tim.h"
 #include "transmit_task.h"
@@ -76,6 +79,18 @@ const osThreadAttr_t monitor_task_attributes = {
 		.priority = (osPriority_t) osPriorityLow,
 };
 
+osThreadId_t command_task_handle;
+uint32_t command_stack_buffer[512];
+osStaticThreadDef_t command_control_block;
+const osThreadAttr_t command_task_attributes = {
+		.name = "command_task",
+		.cb_mem = &command_control_block,
+		.cb_size = sizeof(command_control_block),
+		.stack_mem = &command_stack_buffer[0],
+		.stack_size = sizeof(command_stack_buffer),
+		.priority = (osPriority_t) osPriorityLow,
+};
+
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
@@ -87,6 +102,7 @@ void MX_FREERTOS_Init(void)
 	dsp_task_handle = osThreadNew(start_dsp_task, NULL, &dsp_task_attributes);
 	transmit_task_handle = osThreadNew(start_transmit_task, NULL, &transmit_task_attributes);
 	monitor_task_handle = osThreadNew(start_monitor_task, NULL, &monitor_task_attributes);
+	command_task_handle = osThreadNew(start_command_task, NULL, &command_task_attributes);
 }
 
 /**

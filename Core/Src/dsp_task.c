@@ -2,6 +2,10 @@
 #include "app_runtime.h"
 #include "dsp_task.h"
 
+/**
+ * @brief Initialize the sampling pipeline and process each scheduler tick.
+ * @param argument Unused CMSIS-RTOS thread argument.
+ */
 void start_dsp_task(void *argument)
 {
 	uint32_t flags;

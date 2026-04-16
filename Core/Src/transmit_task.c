@@ -6,6 +6,10 @@
 
 static char tx_message_buffer[512];
 
+/**
+ * @brief Wait for transmit requests and forward the latest packet over USART1.
+ * @param argument Unused CMSIS-RTOS thread argument.
+ */
 void start_transmit_task(void *argument)
 {
 	uint32_t flags;
@@ -21,6 +25,11 @@ void start_transmit_task(void *argument)
 
 		if ((flags & TX_FLAG_SEND) != 0U)
 		{
+			if (app_runtime_is_streaming_mode() == 0U)
+			{
+				continue;
+			}
+
 			app_runtime_claim_latest_tx_packet(&current_tx_packet);
 
 			if (current_tx_packet != NULL)

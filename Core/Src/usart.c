@@ -126,6 +126,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uart_handle)
 
     __HAL_LINKDMA(uart_handle,hdmatx,hdma_usart1_tx);
 
+    HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+
   }
 }
 
@@ -147,6 +150,8 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uart_handle)
     /* USART1 DMA DeInit */
     HAL_DMA_DeInit(uart_handle->hdmarx);
     HAL_DMA_DeInit(uart_handle->hdmatx);
+
+    HAL_NVIC_DisableIRQ(USART1_IRQn);
 
   }
 }

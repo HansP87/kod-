@@ -39,6 +39,7 @@ extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern TIM_HandleTypeDef htim1;
 extern LPTIM_HandleTypeDef hlptim2;
+extern UART_HandleTypeDef huart1;
 
 /******************************************************************************/
 /*           Cortex Processor Interruption and Exception Handlers          */
@@ -161,6 +162,14 @@ void TIM1_UP_IRQHandler(void)
 
   HAL_TIM_IRQHandler(&htim1);
 
+}
+
+/**
+  * @brief Forward USART1 interrupts into the HAL driver.
+  */
+void USART1_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart1);
 }
 
 /**

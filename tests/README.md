@@ -6,6 +6,7 @@ This project now includes a minimal hardware-in-the-loop test harness based on R
 
 - `tests/robot/smoke.robot`: the smoke suite entry point
 - `tests/robot/adc_regression.robot`: tighter regression checks for packet contents and stable channels
+- `tests/robot/config_mode.robot`: command/config-mode integration tests, including MCU serial-number retrieval
 - `tests/robot/resources/common.resource`: shared suite setup/teardown and common keywords
 - `tests/libraries/DevBoardLibrary.py`: Python keyword library for build, flash, UART, and packet parsing
 - `tests/scripts/run_smoke.sh`: stable wrapper for running the smoke suite from the repo root or VS Code tasks
@@ -28,9 +29,39 @@ The low-priority monitor task now accepts ASCII commands on USART1:
 - `HELP`
 - `TRIGGER`
 
+The firmware also accepts the plain-text command `CONFIGMODE` to enter configuration mode. In configuration mode the periodic streaming path is disabled, `ENTERED CONFIGMODE` is sent back, and framed commands use this format:
+
+```text
+@,command_name_lower,parameter0,...,crc8
+```
+
+Responses use:
+
+```text
+!,COMMAND_NAME_UPPER,response_parameter0,...,crc8
+```
+
+CRC-8 uses polynomial `0x07` with seed `0xA5`, calculated over the ASCII payload before the final CRC field.
+
+On every boot, before the regular streaming beacons and packets start, the firmware emits a startup banner during the boot phase:
+
+```text
+STARTUP:MCU_SERIAL=<24 hex chars>
+```
+
+This is the boot-ready marker used by the HIL tests. During the boot phase it is emitted repeatedly for a short window so the host can reliably synchronize after flashing or reset, before the regular packet stream starts.
+
+Currently implemented framed commands:
+
+- `mcu_serial` returns the 96-bit STM32 unique ID as 24 uppercase hexadecimal characters.
+- `exit_config` returns `EXIT_CONFIG,STREAMING` and resumes the normal periodic stream.
+- `reset` returns `RESET,REBOOTING` and then performs a full MCU reset.
+
+Error responses are returned as `!,ERROR,<code>,<crc8>`, with coverage for malformed frames, bad CRC, bad sign, unknown commands, and oversized lines.
+
 `TRIGGER` emits `OK:TRIGGER` and then schedules the same UART packet transmission path used by the button-triggered flow.
 
-For the default smoke suite, the monitor task emits `TEST:READY` periodically and emits `TEST:AUTO_TRIGGER` periodically before scheduling a packet transmission automatically. This keeps the smoke test independent of host-to-target UART RX reliability and avoids losing the only UART burst if the host opens the port a little late.
+For the default smoke suite, the startup serial banner is used as the boot synchronization marker. The monitor task still emits `TEST:AUTO_TRIGGER` periodically before scheduling a packet transmission automatically so the smoke and regression suites can validate packet traffic without pressing the physical button.
 
 ## Host Setup
 
@@ -53,6 +84,8 @@ source .venv/bin/activate
 source .venv/bin/activate
 ./tests/scripts/run_all_tests.sh --level regression
 ```
+
+The regression level now includes ADC regression checks plus config-mode positive and negative protocol tests.
 
 ## Running All Suites
 

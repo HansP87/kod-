@@ -36,13 +36,17 @@ case "$level" in
     ;;
   regression)
     output_dir="${workspace_dir}/tests/results/regression"
-    suites=("${workspace_dir}/tests/robot/adc_regression.robot")
+    suites=(
+      "${workspace_dir}/tests/robot/adc_regression.robot"
+      "${workspace_dir}/tests/robot/config_mode.robot"
+    )
     ;;
   all)
     output_dir="${workspace_dir}/tests/results/all"
     suites=(
       "${workspace_dir}/tests/robot/smoke.robot"
       "${workspace_dir}/tests/robot/adc_regression.robot"
+      "${workspace_dir}/tests/robot/config_mode.robot"
     )
     ;;
   *)

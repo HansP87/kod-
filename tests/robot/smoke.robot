@@ -4,9 +4,9 @@ Suite Setup    Prepare Session
 Suite Teardown    Close Uart
 
 *** Test Cases ***
-Boot Announces Test Readiness
-    ${line}=    Wait For Line Matching    ^TEST:READY$    5
-    Should Be Equal    ${line}    TEST:READY
+Boot Announces Mcu Serial
+    ${serial}=    Wait For Startup Banner    5
+    Should Match Regexp    ${serial}    ^[0-9A-F]{24}$
 
 Auto Trigger Produces A Packet
     Wait For Line Matching    ^TEST:AUTO_TRIGGER$    5

@@ -18,6 +18,12 @@ SAMPLE_PATTERN = re.compile(
     r"^SAMPLE (?P<index>\d+): VDDA=(?P<vdda_mv>\d+) mV TEMP=(?P<temp_c>-?\d+) C "
     r"ADC1=(?P<adc1>[0-9,]+) ADC2=(?P<adc2>[0-9,]+)$"
 )
+STARTUP_PATTERN = re.compile(r"^STARTUP:MCU_SERIAL=(?P<serial>[0-9A-F]{24})$")
+
+COMMAND_REQUEST_SIGN = "@"
+COMMAND_RESPONSE_SIGN = "!"
+COMMAND_CRC8_SEED = 0xA5
+COMMAND_CRC8_POLYNOMIAL = 0x07
 
 
 @library(scope="SUITE")
@@ -83,19 +89,23 @@ class DevBoardLibrary:
             env=self._build_env(),
             check=True,
         )
-        time.sleep(2.0)
+        time.sleep(0.2)
 
     @keyword
-    def auto_detect_serial_port(self):
+    def auto_detect_serial_port(self, timeout_seconds=10.0):
         requested_port = os.environ.get("DEVADC_SERIAL_PORT")
         if requested_port:
             return requested_port
 
-        ranked_ports = sorted(list_ports.comports(), key=self._serial_port_score, reverse=True)
-        if not ranked_ports or self._serial_port_score(ranked_ports[0]) <= 0:
-            raise AssertionError("No STM32 serial port found. Set DEVADC_SERIAL_PORT explicitly.")
+        deadline = time.monotonic() + float(timeout_seconds)
 
-        return ranked_ports[0].device
+        while time.monotonic() < deadline:
+            ranked_ports = sorted(list_ports.comports(), key=self._serial_port_score, reverse=True)
+            if ranked_ports and self._serial_port_score(ranked_ports[0]) > 0:
+                return ranked_ports[0].device
+            time.sleep(0.2)
+
+        raise AssertionError("No STM32 serial port found. Set DEVADC_SERIAL_PORT explicitly.")
 
     def _serial_port_score(self, port_info):
         text = " ".join(
@@ -149,17 +159,11 @@ class DevBoardLibrary:
 
     @keyword
     def wait_for_monitor_ready(self, timeout_seconds=10.0):
-        return self.wait_for_line_matching(r"^TEST:READY$", timeout_seconds)
+        return self.wait_for_startup_banner(timeout_seconds)
 
     @keyword
     def synchronize_with_monitor(self, timeout_seconds=10.0):
-        deadline = time.monotonic() + float(timeout_seconds)
-
-        try:
-            return self.wait_for_monitor_ready(timeout_seconds)
-        except AssertionError:
-            self.send_command("PING")
-            return self.wait_for_line_matching(r"^PONG$", max(deadline - time.monotonic(), 0.5))
+        return self.wait_for_startup_banner(timeout_seconds)
 
     @keyword
     def send_command(self, command):
@@ -181,6 +185,135 @@ class DevBoardLibrary:
                 return line
 
         raise AssertionError(f"Timeout waiting for pattern {pattern!r}. Recent lines: {self.last_lines}")
+
+    @keyword
+    def wait_for_no_line_matching(self, pattern, timeout_seconds=3.0):
+        matcher = re.compile(pattern)
+        deadline = time.monotonic() + float(timeout_seconds)
+
+        while time.monotonic() < deadline:
+            try:
+                line = self._read_line_until(min(0.25, deadline - time.monotonic()))
+            except AssertionError:
+                continue
+
+            if matcher.search(line):
+                raise AssertionError(f"Unexpected line matching {pattern!r}: {line}")
+
+    @keyword
+    def enter_config_mode(self, timeout_seconds=5.0):
+        self.send_command("CONFIGMODE")
+        return self.wait_for_line_matching(r"^ENTERED CONFIGMODE$", timeout_seconds)
+
+    def _compute_crc8(self, payload):
+        crc = COMMAND_CRC8_SEED
+
+        for byte in payload.encode("ascii"):
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x80:
+                    crc = ((crc << 1) ^ COMMAND_CRC8_POLYNOMIAL) & 0xFF
+                else:
+                    crc = (crc << 1) & 0xFF
+
+        return crc
+
+    @keyword
+    def send_config_command(self, command_name, *parameters):
+        payload_fields = [COMMAND_REQUEST_SIGN, command_name]
+        payload_fields.extend(str(parameter) for parameter in parameters)
+        payload = ",".join(payload_fields)
+        crc = self._compute_crc8(payload)
+        self.send_command(f"{payload},{crc:02X}")
+
+    @keyword
+    def send_config_command_with_crc(self, command_name, crc_text, *parameters):
+        payload_fields = [COMMAND_REQUEST_SIGN, command_name]
+        payload_fields.extend(str(parameter) for parameter in parameters)
+        payload = ",".join(payload_fields)
+        self.send_command(f"{payload},{crc_text}")
+
+    @keyword
+    def send_config_command_with_sign(self, sign, command_name, *parameters):
+        payload_fields = [str(sign), command_name]
+        payload_fields.extend(str(parameter) for parameter in parameters)
+        payload = ",".join(payload_fields)
+        crc = self._compute_crc8(payload)
+        self.send_command(f"{payload},{crc:02X}")
+
+    def _parse_config_response(self, line):
+        fields = line.split(",")
+        if len(fields) < 3:
+            raise AssertionError(f"Malformed config response: {line}")
+
+        if fields[0] != COMMAND_RESPONSE_SIGN:
+            raise AssertionError(f"Unexpected config response sign in line: {line}")
+
+        payload = ",".join(fields[:-1])
+        expected_crc = self._compute_crc8(payload)
+        try:
+            received_crc = int(fields[-1], 16)
+        except ValueError as error:
+            raise AssertionError(f"Invalid CRC field in line: {line}") from error
+
+        if received_crc != expected_crc:
+            raise AssertionError(
+                f"CRC mismatch for line {line!r}: expected {expected_crc:02X}, got {received_crc:02X}"
+            )
+
+        return {
+            "sign": fields[0],
+            "command": fields[1],
+            "parameters": fields[2:-1],
+            "crc": received_crc,
+            "line": line,
+        }
+
+    @keyword
+    def wait_for_config_response(self, expected_command, timeout_seconds=5.0):
+        deadline = time.monotonic() + float(timeout_seconds)
+
+        while time.monotonic() < deadline:
+            line = self._read_line_until(deadline - time.monotonic())
+            if not line.startswith(f"{COMMAND_RESPONSE_SIGN},"):
+                continue
+
+            response = self._parse_config_response(line)
+            if response["command"] == expected_command:
+                return response
+
+        raise AssertionError(
+            f"Timeout waiting for config response {expected_command!r}. Recent lines: {self.last_lines}"
+        )
+
+    @keyword
+    def response_parameter_should_match(self, response, parameter_index, pattern):
+        value = response["parameters"][int(parameter_index)]
+        if re.fullmatch(pattern, value) is None:
+            raise AssertionError(
+                f"Response parameter {parameter_index} value {value!r} does not match pattern {pattern!r}"
+            )
+
+    @keyword
+    def response_parameter_should_equal(self, response, parameter_index, expected_value):
+        value = response["parameters"][int(parameter_index)]
+        if value != expected_value:
+            raise AssertionError(
+                f"Response parameter {parameter_index} value {value!r} does not equal {expected_value!r}"
+            )
+
+    @keyword
+    def wait_for_startup_banner(self, timeout_seconds=5.0):
+        line = self.wait_for_line_matching(r"^STARTUP:MCU_SERIAL=[0-9A-F]{24}$", timeout_seconds)
+        match = STARTUP_PATTERN.match(line)
+        if match is None:
+            raise AssertionError(f"Malformed startup banner: {line}")
+        return match.group("serial")
+
+    @keyword
+    def values_should_be_equal(self, actual_value, expected_value):
+        if str(actual_value) != str(expected_value):
+            raise AssertionError(f"Expected {expected_value!r}, got {actual_value!r}")
 
     @keyword
     def trigger_sample(self, timeout_seconds=5.0):
