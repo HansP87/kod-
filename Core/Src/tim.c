@@ -52,6 +52,15 @@ void MX_TIM2_Init(void)
 
 }
 
+/**
+  * @brief Read the current TIM2 counter value in microseconds.
+  * @return Free-running TIM2 timestamp in microseconds.
+  */
+uint32_t tim2_get_timestamp_us(void)
+{
+  return __HAL_TIM_GET_COUNTER(&htim2);
+}
+
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_base_handle)
 {
 

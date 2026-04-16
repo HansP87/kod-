@@ -23,6 +23,11 @@ Debug/
 *.swp
 *.tmp
 *.bak
+.venv/
+output.xml
+log.html
+report.html
+tests/results/
 
 # Project workspace metadata
 *.metadata

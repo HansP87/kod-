@@ -1,0 +1,16 @@
+#!/bin/sh
+
+REAL_GCC="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin/arm-none-eabi-gcc"
+
+set -- "$@"
+
+filtered_args=""
+
+for arg in "$@"
+do
+	if [ "$arg" != "-fcyclomatic-complexity" ]; then
+		filtered_args="$filtered_args '$arg'"
+	fi
+done
+
+eval "exec '$REAL_GCC' $filtered_args"

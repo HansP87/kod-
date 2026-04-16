@@ -33,6 +33,12 @@ extern TIM_HandleTypeDef htim2;
   */
 void MX_TIM2_Init(void);
 
+/**
+  * @brief Read the current TIM2 counter value in microseconds.
+  * @return Free-running TIM2 timestamp in microseconds.
+  */
+uint32_t tim2_get_timestamp_us(void);
+
 #ifdef __cplusplus
 }
 #endif

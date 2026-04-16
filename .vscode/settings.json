@@ -1,0 +1,7 @@
+{
+  "C_Cpp.default.compilerPath": "/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin/arm-none-eabi-gcc",
+  "C_Cpp.default.intelliSenseMode": "gcc-arm",
+  "terminal.integrated.env.osx": {
+    "PATH": "${workspaceFolder}/.vscode/toolchain-bin:/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:${env:PATH}"
+  }
+}
