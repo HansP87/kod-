@@ -54,8 +54,12 @@ This is the boot-ready marker used by the HIL tests. During the boot phase it is
 Currently implemented framed commands:
 
 - `mcu_serial` returns the 96-bit STM32 unique ID as 24 uppercase hexadecimal characters.
+- `product_name` returns the active product name, or updates it when one parameter is provided. Updates stay volatile until `save` is issued.
+- `save` writes the current runtime configuration to the reserved internal-flash config sector.
 - `exit_config` returns `EXIT_CONFIG,STREAMING` and resumes the normal periodic stream.
 - `reset` returns `RESET,REBOOTING` and then performs a full MCU reset.
+
+The configuration record is stored with a CRC32 in a reserved 16 KB flash sector at the end of internal flash. On boot, the firmware validates the record before loading it. If the flash region is virgin or the CRC check fails, built-in defaults are used instead.
 
 Error responses are returned as `!,ERROR,<code>,<crc8>`, with coverage for malformed frames, bad CRC, bad sign, unknown commands, and oversized lines.
 

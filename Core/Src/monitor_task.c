@@ -6,8 +6,10 @@
 #include "tim.h"
 #include "usart.h"
 
+/* Repeat the startup banner long enough for the host to reconnect after reset. */
 #define MONITOR_STARTUP_BANNER_PERIOD_MS  250U
 #define MONITOR_STARTUP_BANNER_REPEAT_COUNT  8U
+/* Keep auto-trigger traffic slow enough to avoid starving interactive commands. */
 #define MONITOR_AUTO_TRIGGER_PERIOD_MS  2000U
 
 extern osThreadId_t transmit_task_handle;

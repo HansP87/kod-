@@ -15,4 +15,4 @@ if [[ ! -f "$firmware_path" ]]; then
   exit 1
 fi
 
-"$programmer_cli" -c port=SWD mode=UR reset=HWrst -w "$firmware_path" -rst
+"$programmer_cli" -c port=SWD mode=UR reset=HWrst -e all -w "$firmware_path" -rst

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cmsis_os2.h"
+#include "app_config.h"
 #include "main.h"
 #include "app_runtime.h"
 #include "command_task.h"
@@ -34,10 +35,16 @@ static void process_config_frame(const char *frame);
 static void send_error_response(const char *error_code);
 /** Send the MCU unique ID through the framed command protocol. */
 static void send_serial_response(void);
+/** Send the current product name through the framed command protocol. */
+static void send_product_name_response(void);
 /** Leave configuration mode and resume streaming mode. */
 static void send_exit_config_response(void);
 /** Acknowledge the reset command and reboot the MCU. */
 static void send_reset_response_and_reboot(void);
+/** Handle the query/update product-name command. */
+static void handle_product_name_command(char *const *tokens, uint32_t token_count);
+/** Persist the current runtime configuration to flash. */
+static void handle_save_command(void);
 /** Compute the protocol CRC-8 over an ASCII payload. */
 static uint8_t compute_crc8(const uint8_t *data, size_t length);
 /** Parse a two-digit hexadecimal CRC field. */
@@ -239,6 +246,18 @@ static void process_config_frame(const char *frame)
 		return;
 	}
 
+	if (strcmp(tokens[1], "product_name") == 0)
+	{
+		handle_product_name_command(tokens, token_count);
+		return;
+	}
+
+	if (strcmp(tokens[1], "save") == 0)
+	{
+		handle_save_command();
+		return;
+	}
+
 	if (strcmp(tokens[1], "exit_config") == 0)
 	{
 		send_exit_config_response();
@@ -280,6 +299,14 @@ static void send_serial_response(void)
 }
 
 /**
+ * @brief Send the current product name through the command protocol.
+ */
+static void send_product_name_response(void)
+{
+	build_and_send_response("PRODUCT_NAME", app_config_get_product_name());
+}
+
+/**
  * @brief Acknowledge config-mode exit and resume streaming mode.
  */
 static void send_exit_config_response(void)
@@ -297,6 +324,66 @@ static void send_reset_response_and_reboot(void)
 	osDelay(20U);
 	__DSB();
 	NVIC_SystemReset();
+}
+
+/**
+ * @brief Handle the query/update product-name command.
+ * @param tokens Tokenized request frame including sign, command, parameters, and CRC field.
+ * @param token_count Number of available tokens.
+ */
+static void handle_product_name_command(char *const *tokens, uint32_t token_count)
+{
+	app_config_status_t status;
+
+	if (token_count == 3U)
+	{
+		send_product_name_response();
+		return;
+	}
+
+	if (token_count != 4U)
+	{
+		send_error_response("MALFORMED");
+		return;
+	}
+
+	status = app_config_set_product_name(tokens[2]);
+	if (status != APP_CONFIG_STATUS_OK)
+	{
+		send_error_response("BADPARAM");
+		return;
+	}
+
+	send_product_name_response();
+}
+
+/**
+ * @brief Persist the current runtime configuration and report the result.
+ */
+static void handle_save_command(void)
+{
+	char error_text[32];
+	app_config_status_t status = app_config_save();
+
+	if (status == APP_CONFIG_STATUS_FLASH_ERROR)
+	{
+		(void)snprintf(
+				error_text,
+				sizeof(error_text),
+				"SAVE_%08lX_%lu",
+				(unsigned long)app_config_get_last_flash_error(),
+				(unsigned long)app_config_get_last_sector_error());
+		send_error_response(error_text);
+		return;
+	}
+
+	if (status == APP_CONFIG_STATUS_VERIFY_ERROR)
+	{
+		send_error_response("SAVE_VERIFY");
+		return;
+	}
+
+	build_and_send_response("SAVE", "OK");
 }
 
 /**

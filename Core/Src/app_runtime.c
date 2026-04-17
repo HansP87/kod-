@@ -53,52 +53,48 @@ static uint32_t app_mode_state = APP_MODE_STREAMING;
 
 __attribute__((section(".dma_buffer"), aligned(32)))
 uint16_t adc1_buf[ADC_BUF_LEN];
+__attribute__((section(".dma_buffer"), aligned(32)))
+uint16_t adc2_buf[ADC_BUF_LEN];
 
 /** Append formatted text to the packet serialization buffer. */
-__attribute__((section(".dma_buffer"), aligned(32)))
-/** Convert a sample/channel pair into the linear DMA buffer index. */
-uint16_t adc2_buf[ADC_BUF_LEN];
-/** Convert the internal reference measurement into the current VDDA estimate. */
-
-/** Initialize a packet header before the latest samples are copied in. */
 static int append_to_buffer(char *buf, size_t size, int len, const char *format, ...);
-/** Fill a packet structure from the current ADC DMA buffers. */
+/** Convert a sample/channel pair into the linear DMA buffer index. */
 static uint32_t get_adc_buffer_index(uint32_t sample, uint32_t channel);
-/** Reset the transmit buffer ownership state to its startup configuration. */
+/** Convert the internal reference measurement into the current VDDA estimate. */
 static uint32_t calculate_vdda_mv(uint16_t vref_raw);
-/** Swap the current ready packet atomically. */
+/** Initialize a packet header before the latest samples are copied in. */
 static void prepare_tx_packet(tx_packet_t *packet);
-/** Load the write index for the returned-packet queue. */
+/** Fill a packet structure from the current ADC DMA buffers. */
 static void fill_tx_packet_from_dma(tx_packet_t *packet);
-/** Load the read index for the returned-packet queue. */
+/** Reset the transmit buffer ownership state to its startup configuration. */
 static void initialize_tx_buffer_ownership(void);
-/** Store the write index for the returned-packet queue. */
+/** Swap the current ready packet atomically. */
 static tx_packet_t *exchange_ready_tx_packet(tx_packet_t *packet);
-/** Store the read index for the returned-packet queue. */
+/** Load the write index for the returned-packet queue. */
 static uint32_t load_returned_tx_write_index(void);
-/** Load the latest trigger timestamp used for packet age reporting. */
+/** Load the read index for the returned-packet queue. */
 static uint32_t load_returned_tx_read_index(void);
-/** Store the latest ADC1 frame-ready timestamp. */
+/** Store the write index for the returned-packet queue. */
 static void store_returned_tx_write_index(uint32_t write_index);
-/** Store the latest ADC2 frame-ready timestamp. */
+/** Store the read index for the returned-packet queue. */
 static void store_returned_tx_read_index(uint32_t read_index);
-/** Select the newest ADC-ready timestamp between both converters. */
+/** Load the latest trigger timestamp used for packet age reporting. */
 static uint32_t load_button_event_timestamp_us(void);
-/** Publish the working packet and acquire a new free packet buffer. */
+/** Store the latest ADC1 frame-ready timestamp. */
 static void store_adc1_ready_timestamp_us(uint32_t timestamp_us);
-/** Return a packet buffer to the free stack. */
+/** Store the latest ADC2 frame-ready timestamp. */
 static void store_adc2_ready_timestamp_us(uint32_t timestamp_us);
-/** Pop a free packet buffer from the free stack. */
+/** Select the newest ADC-ready timestamp between both converters. */
 static uint32_t get_latest_sample_ready_timestamp_us(void);
-/** Move transmit buffers returned by the TX task back to the free stack. */
+/** Publish the working packet and acquire a new free packet buffer. */
 static void publish_working_tx_packet(void);
-/** Queue a packet buffer to be reclaimed by the DSP task later. */
+/** Return a packet buffer to the free stack. */
 static void push_free_tx_packet(tx_packet_t *packet);
+/** Pop a free packet buffer from the free stack. */
 static tx_packet_t *pop_free_tx_packet(void);
-/**
- * @brief Reset the application-owned runtime state back to power-up defaults.
- */
+/** Move transmit buffers returned by the TX task back to the free stack. */
 static void reclaim_returned_tx_packets(void);
+/** Queue a packet buffer to be reclaimed by the DSP task later. */
 static int queue_returned_tx_packet(tx_packet_t *packet);
 
 void app_runtime_reset(void)

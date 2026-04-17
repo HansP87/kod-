@@ -311,6 +311,12 @@ class DevBoardLibrary:
         return match.group("serial")
 
     @keyword
+    def response_parameter_should_have_count(self, response, expected_count):
+        actual_count = len(response["parameters"])
+        if actual_count != int(expected_count):
+            raise AssertionError(f"Expected {expected_count} parameters, got {actual_count}: {response}")
+
+    @keyword
     def values_should_be_equal(self, actual_value, expected_value):
         if str(actual_value) != str(expected_value):
             raise AssertionError(f"Expected {expected_value!r}, got {actual_value!r}")
