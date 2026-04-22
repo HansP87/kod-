@@ -24,6 +24,40 @@ The runtime pipeline is:
 4. `tx_packet_service` publishes packets for normal streaming or high-rate capture.
 5. `transmit_service` serializes the selected packet into the wire protocol.
 
+## Timing And Synchronization
+
+The firmware uses a small set of hardware timing sources and RTOS synchronization points:
+
+- `LPTIM1` generates the periodic ADC trigger waveform.
+- `LPTIM2` generates the DSP scheduler tick that releases `dsp_task`.
+- `TIM2` runs as a free-running microsecond time base for event timestamps and packet age measurement.
+- ADC conversion completion is reported through DMA/HAL callbacks rather than by polling.
+
+The main synchronization flow is:
+
+1. `LPTIM1` triggers the ADC conversion sequence.
+2. ADC1 and ADC2 complete into DMA buffers and raise completion callbacks.
+3. The DMA completion path records the latest sample-ready timestamps.
+4. `LPTIM2` raises the DSP scheduler callback, which sets `DSP_FLAG_TICK`.
+5. `dsp_task` wakes, verifies that fresh ADC frames are available from both ADC instances, and publishes one packet.
+6. The transport path requests `transmit_task` using `TX_FLAG_SEND` when a normal-stream packet or high-rate frame should be sent.
+
+Key timing behavior in the current implementation:
+
+- The DSP output sample rate is configured for `800 Hz`.
+- The normal background stream is intentionally throttled to one packet every `100000 us` (`10 Hz`).
+- High-rate capture bypasses that normal throttling and emits each filtered frame until the requested frame count is sent.
+- Packet `age_us` values are derived from the free-running `TIM2` timestamp and the recorded `sample_ready_timestamp_us` for the packet.
+
+Concurrency and ownership rules are:
+
+- ISR/HAL callback context only records readiness, timestamps, or thread flags; the heavier DSP and serialization work stays in task context.
+- `dsp_task` is the producer of filtered packets.
+- `transmit_task` is the consumer that serializes and sends the latest published packet.
+- `tx_packet_service` mediates packet ownership so DSP-side writes and UART-side reads do not operate on the same buffer concurrently.
+
+This design keeps the interrupt path short, makes the scheduler release explicit through thread flags, and ties reported packet latency to the same microsecond timing base used for button-trigger events and transport timestamps.
+
 ## Architecture Diagrams
 
 ### Sampling And Transport Flow
