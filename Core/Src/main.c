@@ -19,7 +19,7 @@
 #include "FreeRTOS.h"
 #include "cmsis_os2.h"
 #include "adc.h"
-#include "app_config.h"
+#include "config_service.h"
 #include "crc.h"
 #include "dma.h"
 #include "lptim.h"
@@ -57,7 +57,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_ADC2_Init();
-  app_config_init();
+  config_service_init();
   HAL_TIM_Base_Start(&htim2);
 
   /* Init scheduler */

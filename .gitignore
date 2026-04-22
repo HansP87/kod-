@@ -28,6 +28,8 @@ output.xml
 log.html
 report.html
 tests/results/
+docs/doxygen/out/
+docs/doxygen/out.log
 
 # Project workspace metadata
 *.metadata

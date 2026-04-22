@@ -16,11 +16,19 @@
   ******************************************************************************
   */
 /* Includes ------------------------------------------------------------------*/
+#include "cmsis_os2.h"
 #include "usart.h"
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
+
+static osMutexId_t usart1_tx_mutex = NULL;
+static const osMutexAttr_t usart1_tx_mutex_attributes = {
+  .name = "usart1_tx_mutex"
+};
+
+static osMutexId_t usart1_get_tx_mutex(void);
 
 /* USART1 init function */
 
@@ -28,7 +36,7 @@ void MX_USART1_UART_Init(void)
 {
 
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 250000;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -154,5 +162,73 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uart_handle)
     HAL_NVIC_DisableIRQ(USART1_IRQn);
 
   }
+}
+
+HAL_StatusTypeDef usart1_transmit_blocking(const uint8_t *data, uint16_t size, uint32_t timeout)
+{
+  HAL_StatusTypeDef status;
+  osMutexId_t tx_mutex;
+
+  if ((data == NULL) || (size == 0U))
+  {
+    return HAL_OK;
+  }
+
+  if (osKernelGetState() != osKernelRunning)
+  {
+    return HAL_UART_Transmit(&huart1, (uint8_t *)data, size, timeout);
+  }
+
+  tx_mutex = usart1_get_tx_mutex();
+  if (tx_mutex == NULL)
+  {
+    return HAL_ERROR;
+  }
+
+  if (osMutexAcquire(tx_mutex, osWaitForever) != osOK)
+  {
+    return HAL_ERROR;
+  }
+
+  status = HAL_UART_Transmit(&huart1, (uint8_t *)data, size, timeout);
+
+  if (osMutexRelease(tx_mutex) != osOK)
+  {
+    return HAL_ERROR;
+  }
+
+  return status;
+}
+
+static osMutexId_t usart1_get_tx_mutex(void)
+{
+  osMutexId_t current_mutex = __atomic_load_n(&usart1_tx_mutex, __ATOMIC_ACQUIRE);
+
+  if (current_mutex == NULL)
+  {
+    osMutexId_t created_mutex = osMutexNew(&usart1_tx_mutex_attributes);
+
+    if (created_mutex == NULL)
+    {
+      return NULL;
+    }
+
+    if (__atomic_compare_exchange_n(
+            &usart1_tx_mutex,
+            &current_mutex,
+            created_mutex,
+            0,
+            __ATOMIC_ACQ_REL,
+            __ATOMIC_ACQUIRE) == 0)
+    {
+      (void)osMutexDelete(created_mutex);
+    }
+    else
+    {
+      current_mutex = created_mutex;
+    }
+  }
+
+  return current_mutex;
 }
 

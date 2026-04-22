@@ -1,0 +1,34 @@
+/**
+ * @defgroup app_core Application Core Types And State
+ * @brief Shared application types, enums, and mode/state accessors.
+ */
+
+/**
+ * @defgroup command_services Command And Protocol Services
+ * @brief ASCII configuration protocol parsing, dispatch, and UART command handling.
+ */
+
+/**
+ * @defgroup config_services Configuration Persistence Services
+ * @brief Runtime configuration APIs and the flash-backed storage layer.
+ */
+
+/**
+ * @defgroup sampling_services Sampling And DSP Pipeline
+ * @brief ADC frame ingestion, decimation, filtering, and filtered packet preparation.
+ */
+
+/**
+ * @defgroup transport_services Transport And Packet Serialization
+ * @brief Packet ownership, normal-stream serialization, and live high-rate capture transport.
+ */
+
+/**
+ * @defgroup monitor_services Monitor And Boot Signalling
+ * @brief Startup banners, button-trigger notifications, and monitor-side UART activity.
+ */
+
+/**
+ * @defgroup task_entrypoints RTOS Task Entry Points And Flags
+ * @brief CMSIS-RTOS task entrypoints and thread-flag definitions used by the application.
+ */

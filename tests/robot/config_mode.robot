@@ -6,7 +6,7 @@ Suite Teardown    Close Uart
 *** Test Cases ***
 Entering Config Mode Stops Periodic Streaming
     Enter Config Mode
-    Wait For No Line Matching    ^(TEST:|SEQ:)    3
+    Wait For No Stream Packet    3
 
 Mcu Serial Command Returns Unique Id
     Enter Config Mode
@@ -61,15 +61,14 @@ Reset Command Emits Startup Serial Banner
     Response Parameter Should Equal    ${reset_response}    0    REBOOTING
     ${startup_serial}=    Wait For Startup Banner    5
     Values Should Be Equal    ${startup_serial}    ${expected_serial}
-    Wait For Line Matching    ^TEST:AUTO_TRIGGER$    5
+    Wait For Stream Packet
 
 Exit Config Mode Restores Streaming
     Enter Config Mode
     Send Config Command    exit_config
     ${response}=    Wait For Config Response    EXIT_CONFIG    5
     Response Parameter Should Equal    ${response}    0    STREAMING
-    Wait For Line Matching    ^TEST:AUTO_TRIGGER$    5
-    Read Tx Packet    5
+    Wait For Stream Packet
 
 Bad Crc Returns Error Response
     Enter Config Mode

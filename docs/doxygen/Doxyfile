@@ -1,0 +1,87 @@
+PROJECT_NAME           = "devADC-dk Firmware"
+PROJECT_BRIEF          = "Application and DSP firmware for the STM32H7B3I-DK ADC demonstrator"
+OUTPUT_DIRECTORY       = docs/doxygen/out
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+USE_MDFILE_AS_MAINPAGE = docs/doxygen/mainpage.md
+JAVADOC_AUTOBRIEF      = YES
+MULTILINE_CPP_IS_BRIEF = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+INTERNAL_DOCS          = NO
+CASE_SENSE_NAMES       = YES
+INLINE_INFO            = YES
+SORT_MEMBER_DOCS       = YES
+QUIET                  = NO
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
+INPUT                  = Core/Inc/app_mode_service.h \
+                         Core/Inc/app_task_flags.h \
+                         Core/Inc/app_types.h \
+                         Core/Inc/command_protocol.h \
+                         Core/Inc/command_service.h \
+                         Core/Inc/command_task.h \
+                         Core/Inc/config_service.h \
+                         Core/Inc/default_task.h \
+                         Core/Inc/dsp_task.h \
+                         Core/Inc/flash_config_storage_bsp.h \
+                         Core/Inc/monitor_service.h \
+                         Core/Inc/monitor_task.h \
+                         Core/Inc/sampling_pipeline_service.h \
+                         Core/Inc/transmit_service.h \
+                         Core/Inc/transmit_task.h \
+                         Core/Inc/tx_packet_service.h \
+                         Core/Src/app_mode_service.c \
+                         Core/Src/command_protocol.c \
+                         Core/Src/command_service.c \
+                         Core/Src/command_task.c \
+                         Core/Src/config_service.c \
+                         Core/Src/default_task.c \
+                         Core/Src/dsp_task.c \
+                         Core/Src/flash_config_storage_bsp.c \
+                         Core/Src/freertos.c \
+                         Core/Src/monitor_service.c \
+                         Core/Src/monitor_task.c \
+                         Core/Src/sampling_pipeline_service.c \
+                         Core/Src/transmit_service.c \
+                         Core/Src/transmit_task.c \
+                         Core/Src/tx_packet_service.c \
+                         docs/doxygen/groups.dox \
+                         docs/doxygen/mainpage.md
+FILE_PATTERNS          = *.h \
+                         *.c \
+                         *.dox \
+                         *.md
+RECURSIVE              = NO
+FULL_PATH_NAMES        = NO
+EXCLUDE                =
+EXCLUDE_PATTERNS       =
+EXCLUDE_SYMLINKS       = YES
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_XML           = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+DOT_MULTI_TARGETS      = YES
+UML_LOOK               = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+STRIP_FROM_PATH        = /Users/hans-petterlundjorgensen/Desktop/st-workspace/devADC-dk

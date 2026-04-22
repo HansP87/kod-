@@ -23,8 +23,11 @@
 #include "cmsis_os2.h"
 
 /* Private includes ----------------------------------------------------------*/
-#include "app_runtime.h"
+#include "app_task_flags.h"
+#include "app_mode_service.h"
+#include "monitor_service.h"
 #include "command_task.h"
+#include "sampling_pipeline_service.h"
 #include "default_task.h"
 #include "dsp_task.h"
 #include "lptim.h"
@@ -123,7 +126,7 @@ void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
  */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
-	app_runtime_record_adc_frame_ready(hadc);
+	sampling_pipeline_service_record_adc_frame_ready(hadc);
 }
 
 /**
@@ -134,7 +137,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if (GPIO_Pin == WAKEUP_Pin)
 	{
-		app_runtime_set_button_event_timestamp_us(tim2_get_timestamp_us());
+		app_mode_service_set_button_event_timestamp_us(tim2_get_timestamp_us());
+		monitor_service_notify_button_press();
 		osThreadFlagsSet(transmit_task_handle, TX_FLAG_SEND);
 	}
 }

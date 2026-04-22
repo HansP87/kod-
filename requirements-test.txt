@@ -1,2 +1,4 @@
 robotframework>=7.0,<8.0
 pyserial>=3.5,<4.0
+matplotlib>=3.8,<4.0
+numpy>=1.26,<3.0

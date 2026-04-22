@@ -1,23 +1,28 @@
-#include <ctype.h>
+/**
+ * @file command_task.c
+ * @brief UART RX state machine for ASCII configuration commands and binary capture requests.
+ * @ingroup command_services
+ */
+
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
+#include "app_mode_service.h"
 #include "cmsis_os2.h"
-#include "app_config.h"
+#include "command_protocol.h"
+#include "command_service.h"
 #include "main.h"
-#include "app_runtime.h"
 #include "command_task.h"
+#include "transmit_service.h"
 #include "usart.h"
 
 #define COMMAND_RX_BUFFER_LEN           128U
+#define COMMAND_BINARY_BUFFER_LEN       32U
 #define COMMAND_RX_QUEUE_LEN            128U
-#define COMMAND_MAX_TOKENS              8U
 #define COMMAND_RESPONSE_BUFFER_LEN     160U
-#define COMMAND_FRAME_BUFFER_LEN        (COMMAND_RESPONSE_BUFFER_LEN + 8U)
-#define COMMAND_REQUEST_SIGN            '@'
-#define COMMAND_RESPONSE_SIGN           '!'
-#define COMMAND_CRC8_POLYNOMIAL         0x07U
-#define COMMAND_CRC8_SEED               0xA5U
+
+#define HIGH_RATE_REQUEST_TYPE_START    1U
+#define HIGH_RATE_REQUEST_PROTOCOL_VERSION 1U
 
 /** Send a raw command response over USART1. */
 static void command_uart_send(const char *message);
@@ -29,28 +34,12 @@ static uint32_t command_uart_dequeue_byte(uint8_t *byte);
 static void command_uart_enqueue_byte(uint8_t byte);
 /** Handle a complete command line collected from the UART stream. */
 static void process_received_line(const char *line);
-/** Decode and execute a framed configuration command. */
-static void process_config_frame(const char *frame);
-/** Build and send a framed error response. */
-static void send_error_response(const char *error_code);
-/** Send the MCU unique ID through the framed command protocol. */
-static void send_serial_response(void);
-/** Send the current product name through the framed command protocol. */
-static void send_product_name_response(void);
-/** Leave configuration mode and resume streaming mode. */
-static void send_exit_config_response(void);
-/** Acknowledge the reset command and reboot the MCU. */
-static void send_reset_response_and_reboot(void);
-/** Handle the query/update product-name command. */
-static void handle_product_name_command(char *const *tokens, uint32_t token_count);
-/** Persist the current runtime configuration to flash. */
-static void handle_save_command(void);
-/** Compute the protocol CRC-8 over an ASCII payload. */
-static uint8_t compute_crc8(const uint8_t *data, size_t length);
-/** Parse a two-digit hexadecimal CRC field. */
-static int parse_crc8_field(const char *text, uint8_t *value);
-/** Build a framed protocol response with an optional parameter field. */
-static void build_and_send_response(const char *command_name, const char *parameter0);
+/** Handle one zero-delimited binary command frame. */
+static void process_received_binary_frame(const uint8_t *frame, size_t length);
+/** Build and send a framed transport-level error response. */
+static void send_transport_error_response(const char *error_code);
+/** Decode one COBS payload into a destination buffer. */
+static size_t cobs_decode(const uint8_t *input, size_t length, uint8_t *output, size_t output_size);
 
 extern osThreadId_t command_task_handle;
 
@@ -59,6 +48,13 @@ static volatile uint32_t command_rx_queue_head = 0U;
 static volatile uint32_t command_rx_queue_tail = 0U;
 static uint8_t command_rx_byte = 0U;
 
+typedef struct __attribute__((packed))
+{
+	uint8_t request_type;
+	uint8_t protocol_version;
+	uint32_t frame_count;
+} high_rate_stream_request_t;
+
 /**
  * @brief Run the command parser and configuration-mode state machine.
  * @param argument Unused CMSIS-RTOS thread argument.
@@ -66,8 +62,11 @@ static uint8_t command_rx_byte = 0U;
 void start_command_task(void *argument)
 {
 	char rx_buffer[COMMAND_RX_BUFFER_LEN];
+	uint8_t binary_buffer[COMMAND_BINARY_BUFFER_LEN];
 	size_t rx_length = 0U;
+	size_t binary_length = 0U;
 	uint8_t received_byte;
+	uint32_t binary_active = 0U;
 
 	(void)argument;
 	command_uart_rx_start();
@@ -76,7 +75,36 @@ void start_command_task(void *argument)
 	{
 		if (command_uart_dequeue_byte(&received_byte) != 0U)
 		{
-			if ((received_byte == '\r') || (received_byte == '\n'))
+			if (binary_active != 0U)
+			{
+				if (received_byte == 0U)
+				{
+					if (binary_length > 0U)
+					{
+						process_received_binary_frame(binary_buffer, binary_length);
+					}
+					binary_active = 0U;
+					binary_length = 0U;
+					rx_length = 0U;
+				}
+				else if (binary_length < sizeof(binary_buffer))
+				{
+					binary_buffer[binary_length] = received_byte;
+					binary_length++;
+				}
+				else
+				{
+					binary_active = 0U;
+					binary_length = 0U;
+				}
+			}
+			else if (received_byte == 0U)
+			{
+				binary_active = 1U;
+				binary_length = 0U;
+				rx_length = 0U;
+			}
+			else if ((received_byte == '\r') || (received_byte == '\n'))
 			{
 				if (rx_length > 0U)
 				{
@@ -93,9 +121,9 @@ void start_command_task(void *argument)
 			else
 			{
 				rx_length = 0U;
-				if (app_runtime_get_mode() == APP_MODE_CONFIG)
+				if (app_mode_service_get_mode() == APP_MODE_CONFIG)
 				{
-					send_error_response("TOO_LONG");
+					send_transport_error_response("TOO_LONG");
 				}
 			}
 		}
@@ -112,7 +140,7 @@ void start_command_task(void *argument)
  */
 static void command_uart_send(const char *message)
 {
-	(void)HAL_UART_Transmit(&huart1, (const uint8_t *)message, (uint16_t)strlen(message), HAL_MAX_DELAY);
+	(void)usart1_transmit_blocking((const uint8_t *)message, (uint16_t)strlen(message), HAL_MAX_DELAY);
 }
 
 /**
@@ -166,312 +194,113 @@ static void command_uart_enqueue_byte(uint8_t byte)
  */
 static void process_received_line(const char *line)
 {
-	if (strcmp(line, "CONFIGMODE") == 0)
+	char response[COMMAND_RESPONSE_BUFFER_LEN];
+	command_service_action_t action;
+	uint32_t frame_count;
+	unsigned long requested_frame_count;
+
+	if (sscanf(line, "TEST:HR_STREAM %lu", &requested_frame_count) == 1)
 	{
-		app_runtime_set_mode(APP_MODE_CONFIG);
-		command_uart_send("ENTERED CONFIGMODE\n");
-		return;
-	}
-
-	if (app_runtime_get_mode() == APP_MODE_CONFIG)
-	{
-		process_config_frame(line);
-	}
-}
-
-/**
- * @brief Parse and dispatch a framed configuration command.
- * @param frame Null-terminated framed command line.
- */
-static void process_config_frame(const char *frame)
-{
-	char mutable_frame[COMMAND_RX_BUFFER_LEN];
-	char *tokens[COMMAND_MAX_TOKENS];
-	char *cursor;
-	char *last_comma;
-	uint8_t received_crc = 0U;
-	uint8_t expected_crc;
-	uint32_t token_count = 0U;
-
-	if (strlen(frame) >= sizeof(mutable_frame))
-	{
-		send_error_response("TOO_LONG");
-		return;
-	}
-
-	last_comma = strrchr(frame, ',');
-	if (last_comma == NULL)
-	{
-		send_error_response("MALFORMED");
-		return;
-	}
-
-	if (parse_crc8_field(last_comma + 1, &received_crc) == 0)
-	{
-		send_error_response("BADCRC");
-		return;
-	}
-
-	expected_crc = compute_crc8((const uint8_t *)frame, (size_t)(last_comma - frame));
-	if (expected_crc != received_crc)
-	{
-		send_error_response("BADCRC");
-		return;
-	}
-
-	(void)strcpy(mutable_frame, frame);
-	cursor = strtok(mutable_frame, ",");
-	while ((cursor != NULL) && (token_count < COMMAND_MAX_TOKENS))
-	{
-		tokens[token_count] = cursor;
-		token_count++;
-		cursor = strtok(NULL, ",");
-	}
-
-	if (token_count < 3U)
-	{
-		send_error_response("MALFORMED");
-		return;
-	}
-
-	if ((strlen(tokens[0]) != 1U) || (tokens[0][0] != COMMAND_REQUEST_SIGN))
-	{
-		send_error_response("BADSIGN");
-		return;
-	}
-
-	if (strcmp(tokens[1], "mcu_serial") == 0)
-	{
-		send_serial_response();
-		return;
-	}
-
-	if (strcmp(tokens[1], "product_name") == 0)
-	{
-		handle_product_name_command(tokens, token_count);
-		return;
-	}
-
-	if (strcmp(tokens[1], "save") == 0)
-	{
-		handle_save_command();
-		return;
-	}
-
-	if (strcmp(tokens[1], "exit_config") == 0)
-	{
-		send_exit_config_response();
-		return;
-	}
-
-	if (strcmp(tokens[1], "reset") == 0)
-	{
-		send_reset_response_and_reboot();
-		return;
-	}
-
-	send_error_response("UNKNOWN_COMMAND");
-}
-
-/**
- * @brief Send a framed error response.
- * @param error_code Symbolic error string to place in the response payload.
- */
-static void send_error_response(const char *error_code)
-{
-	build_and_send_response("ERROR", error_code);
-}
-
-/**
- * @brief Send the MCU unique ID as a framed command response.
- */
-static void send_serial_response(void)
-{
-	char serial_text[25];
-	(void)snprintf(
-			serial_text,
-			sizeof(serial_text),
-			"%08lX%08lX%08lX",
-			(unsigned long)HAL_GetUIDw0(),
-			(unsigned long)HAL_GetUIDw1(),
-			(unsigned long)HAL_GetUIDw2());
-	build_and_send_response("MCU_SERIAL", serial_text);
-}
-
-/**
- * @brief Send the current product name through the command protocol.
- */
-static void send_product_name_response(void)
-{
-	build_and_send_response("PRODUCT_NAME", app_config_get_product_name());
-}
-
-/**
- * @brief Acknowledge config-mode exit and resume streaming mode.
- */
-static void send_exit_config_response(void)
-{
-	build_and_send_response("EXIT_CONFIG", "STREAMING");
-	app_runtime_set_mode(APP_MODE_STREAMING);
-}
-
-/**
- * @brief Acknowledge the reset command and trigger a system reset.
- */
-static void send_reset_response_and_reboot(void)
-{
-	build_and_send_response("RESET", "REBOOTING");
-	osDelay(20U);
-	__DSB();
-	NVIC_SystemReset();
-}
-
-/**
- * @brief Handle the query/update product-name command.
- * @param tokens Tokenized request frame including sign, command, parameters, and CRC field.
- * @param token_count Number of available tokens.
- */
-static void handle_product_name_command(char *const *tokens, uint32_t token_count)
-{
-	app_config_status_t status;
-
-	if (token_count == 3U)
-	{
-		send_product_name_response();
-		return;
-	}
-
-	if (token_count != 4U)
-	{
-		send_error_response("MALFORMED");
-		return;
-	}
-
-	status = app_config_set_product_name(tokens[2]);
-	if (status != APP_CONFIG_STATUS_OK)
-	{
-		send_error_response("BADPARAM");
-		return;
-	}
-
-	send_product_name_response();
-}
-
-/**
- * @brief Persist the current runtime configuration and report the result.
- */
-static void handle_save_command(void)
-{
-	char error_text[32];
-	app_config_status_t status = app_config_save();
-
-	if (status == APP_CONFIG_STATUS_FLASH_ERROR)
-	{
-		(void)snprintf(
-				error_text,
-				sizeof(error_text),
-				"SAVE_%08lX_%lu",
-				(unsigned long)app_config_get_last_flash_error(),
-				(unsigned long)app_config_get_last_sector_error());
-		send_error_response(error_text);
-		return;
-	}
-
-	if (status == APP_CONFIG_STATUS_VERIFY_ERROR)
-	{
-		send_error_response("SAVE_VERIFY");
-		return;
-	}
-
-	build_and_send_response("SAVE", "OK");
-}
-
-/**
- * @brief Compute the CRC-8 used by the framed UART command protocol.
- * @param data Payload bytes to hash.
- * @param length Number of bytes in @p data.
- * @return Calculated CRC-8 value.
- */
-static uint8_t compute_crc8(const uint8_t *data, size_t length)
-{
-	uint8_t crc = COMMAND_CRC8_SEED;
-
-	for (size_t index = 0U; index < length; index++)
-	{
-		crc ^= data[index];
-		for (uint32_t bit = 0U; bit < 8U; bit++)
+		frame_count = (uint32_t)requested_frame_count;
+		if (transmit_service_start_high_rate_capture(frame_count) == 0U)
 		{
-			if ((crc & 0x80U) != 0U)
+			command_uart_send("TEST:HR_STREAM_BUSY\n");
+		}
+		return;
+	}
+
+	if (command_service_process_line(line, response, sizeof(response), &action) != 0U)
+	{
+		command_uart_send(response);
+
+		if (action == COMMAND_SERVICE_ACTION_REBOOT)
+		{
+			osDelay(20U);
+			__DSB();
+			NVIC_SystemReset();
+		}
+	}
+}
+
+static void process_received_binary_frame(const uint8_t *frame, size_t length)
+{
+	uint8_t decoded_frame[COMMAND_BINARY_BUFFER_LEN];
+	size_t decoded_length;
+	high_rate_stream_request_t request;
+
+	decoded_length = cobs_decode(frame, length, decoded_frame, sizeof(decoded_frame));
+	if (decoded_length != sizeof(request))
+	{
+		return;
+	}
+
+	(void)memcpy(&request, decoded_frame, sizeof(request));
+	if ((request.request_type != HIGH_RATE_REQUEST_TYPE_START) ||
+			(request.protocol_version != HIGH_RATE_REQUEST_PROTOCOL_VERSION))
+	{
+		return;
+	}
+
+	(void)transmit_service_start_high_rate_capture(request.frame_count);
+}
+
+/**
+ * @brief Send a framed transport-level error response.
+ * @param error_code Protocol error code to place in the response payload.
+ */
+static void send_transport_error_response(const char *error_code)
+{
+	char response[COMMAND_RESPONSE_BUFFER_LEN];
+
+	if (command_protocol_build_response("ERROR", error_code, response, sizeof(response)) > 0)
+	{
+		command_uart_send(response);
+	}
+}
+
+static size_t cobs_decode(const uint8_t *input, size_t length, uint8_t *output, size_t output_size)
+{
+	size_t read_index = 0U;
+	size_t write_index = 0U;
+
+	if ((input == NULL) || (output == NULL))
+	{
+		return 0U;
+	}
+
+	while (read_index < length)
+	{
+		uint8_t code = input[read_index];
+		size_t copy_length;
+
+		if (code == 0U)
+		{
+			return 0U;
+		}
+
+		read_index++;
+		copy_length = (size_t)code - 1U;
+		if ((read_index + copy_length > length) || (write_index + copy_length > output_size))
+		{
+			return 0U;
+		}
+
+		(void)memcpy(&output[write_index], &input[read_index], copy_length);
+		write_index += copy_length;
+		read_index += copy_length;
+
+		if ((code != 0xFFU) && (read_index < length))
+		{
+			if (write_index >= output_size)
 			{
-				crc = (uint8_t)((crc << 1U) ^ COMMAND_CRC8_POLYNOMIAL);
+				return 0U;
 			}
-			else
-			{
-				crc <<= 1U;
-			}
+			output[write_index] = 0U;
+			write_index++;
 		}
 	}
 
-	return crc;
-}
-
-/**
- * @brief Parse a hexadecimal CRC field from ASCII.
- * @param text Null-terminated ASCII CRC field.
- * @param value Destination for the parsed byte.
- * @return Non-zero on success, otherwise zero.
- */
-static int parse_crc8_field(const char *text, uint8_t *value)
-{
-	char *parse_end;
-	unsigned long parsed_value;
-
-	if ((text == NULL) || (strlen(text) == 0U) || (strlen(text) > 2U))
-	{
-		return 0;
-	}
-
-	for (size_t index = 0U; text[index] != '\0'; index++)
-	{
-		if (isxdigit((unsigned char)text[index]) == 0)
-		{
-			return 0;
-		}
-	}
-
-	parsed_value = strtoul(text, &parse_end, 16);
-	if ((*parse_end != '\0') || (parsed_value > 0xFFU))
-	{
-		return 0;
-	}
-
-	*value = (uint8_t)parsed_value;
-	return 1;
-}
-
-/**
- * @brief Build and send a framed response including its CRC field.
- * @param command_name Response command token written after the response sign.
- * @param parameter0 Optional single parameter payload, or `NULL` for no parameter.
- */
-static void build_and_send_response(const char *command_name, const char *parameter0)
-{
-	char payload[COMMAND_RESPONSE_BUFFER_LEN];
-	char frame[COMMAND_FRAME_BUFFER_LEN];
-	uint8_t crc;
-
-	if (parameter0 != NULL)
-	{
-		(void)snprintf(payload, sizeof(payload), "%c,%s,%s", COMMAND_RESPONSE_SIGN, command_name, parameter0);
-	}
-	else
-	{
-		(void)snprintf(payload, sizeof(payload), "%c,%s", COMMAND_RESPONSE_SIGN, command_name);
-	}
-
-	crc = compute_crc8((const uint8_t *)payload, strlen(payload));
-	(void)snprintf(frame, sizeof(frame), "%s,%02X\n", payload, (unsigned int)crc);
-	command_uart_send(frame);
+	return write_index;
 }
 
 /**

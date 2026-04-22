@@ -2,9 +2,12 @@
 #define TRANSMIT_TASK_H
 
 /**
- * @brief Run the UART transmit thread that serializes and sends the latest packet.
- * @param argument Unused CMSIS-RTOS thread argument.
+ * @file transmit_task.h
+ * @brief Entry point for the USART transmit worker thread.
+ * @ingroup task_entrypoints
  */
+
+/** @brief Run the UART transmit thread that serializes and sends the latest packet. */
 void start_transmit_task(void *argument);
 
 #endif

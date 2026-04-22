@@ -1,5 +1,8 @@
 #include "cmsis_os2.h"
-#include "app_runtime.h"
+#include "app_mode_service.h"
+#include "app_task_flags.h"
+#include "sampling_pipeline_service.h"
+#include "tx_packet_service.h"
 #include "dsp_task.h"
 
 /**
@@ -14,9 +17,11 @@ void start_dsp_task(void *argument)
 
 	(void)argument;
 
-	app_runtime_reset();
-	app_runtime_initialize_tx_buffer_ownership();
-	app_runtime_start_sampling_pipeline();
+	sampling_pipeline_service_reset();
+	app_mode_service_set_mode(APP_MODE_STREAMING);
+	tx_packet_service_initialize_ownership();
+	app_mode_service_set_button_event_timestamp_us(0U);
+	sampling_pipeline_service_start();
 
 	for (;;)
 	{
@@ -24,7 +29,7 @@ void start_dsp_task(void *argument)
 
 		if ((flags & DSP_FLAG_TICK) != 0U)
 		{
-			app_runtime_process_dsp_tick(&last_adc1_frame, &last_adc2_frame);
+			sampling_pipeline_service_process_dsp_tick(&last_adc1_frame, &last_adc2_frame);
 		}
 	}
 }

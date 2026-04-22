@@ -32,6 +32,7 @@ extern UART_HandleTypeDef huart1;
   * @brief Initialize USART1 for UART logging and console traffic.
   */
 void MX_USART1_UART_Init(void);
+HAL_StatusTypeDef usart1_transmit_blocking(const uint8_t *data, uint16_t size, uint32_t timeout);
 
 #ifdef __cplusplus
 }

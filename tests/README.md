@@ -20,7 +20,7 @@ The test flow can:
 - flash the board using `STM32_Programmer_CLI`
 - detect the STM32 virtual COM port on macOS
 - talk to the firmware over UART
-- verify a boot-time automatic trigger without pressing the physical button
+- verify the boot banner, the compact binary streaming path, and the config protocol
 
 ## Firmware Test Commands
 
@@ -43,20 +43,20 @@ Responses use:
 
 CRC-8 uses polynomial `0x07` with seed `0xA5`, calculated over the ASCII payload before the final CRC field.
 
-On every boot, before the regular streaming beacons and packets start, the firmware emits a startup banner during the boot phase:
+On every boot, before the regular binary stream starts, the firmware emits a startup banner during the boot phase:
 
 ```text
 STARTUP:MCU_SERIAL=<24 hex chars>
 ```
 
-This is the boot-ready marker used by the HIL tests. During the boot phase it is emitted repeatedly for a short window so the host can reliably synchronize after flashing or reset, before the regular packet stream starts.
+This is the boot-ready marker used by the HIL tests.
 
 Currently implemented framed commands:
 
 - `mcu_serial` returns the 96-bit STM32 unique ID as 24 uppercase hexadecimal characters.
 - `product_name` returns the active product name, or updates it when one parameter is provided. Updates stay volatile until `save` is issued.
 - `save` writes the current runtime configuration to the reserved internal-flash config sector.
-- `exit_config` returns `EXIT_CONFIG,STREAMING` and resumes the normal periodic stream.
+- `exit_config` returns `EXIT_CONFIG,STREAMING` and resumes the normal stream.
 - `reset` returns `RESET,REBOOTING` and then performs a full MCU reset.
 
 The configuration record is stored with a CRC32 in a reserved 16 KB flash sector at the end of internal flash. On boot, the firmware validates the record before loading it. If the flash region is virgin or the CRC check fails, built-in defaults are used instead.
@@ -65,7 +65,57 @@ Error responses are returned as `!,ERROR,<code>,<crc8>`, with coverage for malfo
 
 `TRIGGER` emits `OK:TRIGGER` and then schedules the same UART packet transmission path used by the button-triggered flow.
 
-For the default smoke suite, the startup serial banner is used as the boot synchronization marker. The monitor task still emits `TEST:AUTO_TRIGGER` periodically before scheduling a packet transmission automatically so the smoke and regression suites can validate packet traffic without pressing the physical button.
+For the default smoke suite, the startup serial banner is used as the boot synchronization marker. After boot, the firmware streams packet data continuously in normal streaming mode as compact binary COBS frames. The `TEST:AUTO_TRIGGER` marker is reserved for an actual user-button press rather than periodic monitor traffic.
+
+## Normal Stream Protocol
+
+The default machine-to-machine stream is a filtered-only binary packet framed with COBS and terminated by a single zero byte.
+
+Each decoded payload is little-endian `struct <IIHh8H>`:
+
+- `age_us`: packet age in microseconds at transmit time
+- `status_flags`: DSP/status flags for that frame
+- `filtered_vdda_mv`: filtered VDDA estimate in millivolts
+- `filtered_temperature_c`: filtered MCU temperature in degrees Celsius
+- `filtered_adc1_mv[4]`: filtered ADC1 rank 1..4 in millivolts
+- `filtered_adc2_mv[4]`: filtered ADC2 rank 1..4 in millivolts
+
+That default live-stream payload is `28 bytes` before COBS framing. It replaces the previous human-readable `SEQ/SAMPLE/FILTERED` text packets.
+
+## High-Rate Live Stream Protocol
+
+The high-rate filtered stream is now a live UART stream at `800 Hz` rather than a buffered capture dump.
+
+The host starts the stream with a binary request framed as:
+
+```text
+0x00 <COBS-encoded request payload> 0x00
+```
+
+The decoded request payload is little-endian `struct <BBI>`:
+
+- `request_type`: `1` for `START_HIGH_RATE_STREAM`
+- `protocol_version`: `1`
+- `frame_count`: number of live data frames requested
+
+The firmware responds with COBS-framed binary packets, each terminated by a single zero byte.
+
+The begin and end control payloads are little-endian `struct <BBI>`:
+
+- `frame_type`: `1` for begin, `3` for end
+- `protocol_version`: `1`
+- `frame_count`: requested frame count on begin, transmitted frame count on end
+
+Each live data payload is little-endian `struct <II8H>`:
+
+- `age_us`: packet age in microseconds at transmit time
+- `status_flags`: DSP/status flags for that frame
+- `adc1_mv[4]`: filtered ADC1 rank 1..4 in millivolts
+- `adc2_mv[4]`: filtered ADC2 rank 1..4 in millivolts
+
+That live data payload is `24 bytes` before COBS framing. With one COBS code byte and one zero delimiter byte on the wire, the stream stays below the `250000` baud UART limit at `800 Hz`.
+
+The Robot/Python HIL library uses the binary request path via `Send High Rate Stream Request` and decodes the stream with `Capture High Rate Stream`.
 
 ## Host Setup
 
