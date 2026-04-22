@@ -28,22 +28,23 @@ The runtime pipeline is:
 
 The firmware uses a small set of hardware timing sources and RTOS synchronization points:
 
-- `LPTIM1` generates the periodic ADC trigger waveform.
-- `LPTIM2` generates the DSP scheduler tick that releases `dsp_task`.
+- `LPTIM1` is clocked from the `24 MHz` `CKPER/HSE` source with divider `1` and period `7499`, so it generates the ADC trigger waveform at `3.2 kHz`.
+- `LPTIM2` is clocked from the same `24 MHz` `CKPER/HSE` source with divider `1` and period `29999`, so it generates the DSP scheduler tick that releases `dsp_task` at `800 Hz`.
 - `TIM2` runs as a free-running microsecond time base for event timestamps and packet age measurement.
 - ADC conversion completion is reported through DMA/HAL callbacks rather than by polling.
 
 The main synchronization flow is:
 
-1. `LPTIM1` triggers the ADC conversion sequence.
+1. `LPTIM1` triggers the ADC conversion sequence at `3.2 kHz`.
 2. ADC1 and ADC2 complete into DMA buffers and raise completion callbacks.
 3. The DMA completion path records the latest sample-ready timestamps.
-4. `LPTIM2` raises the DSP scheduler callback, which sets `DSP_FLAG_TICK`.
+4. `LPTIM2` raises the DSP scheduler callback at `800 Hz`, which sets `DSP_FLAG_TICK`.
 5. `dsp_task` wakes, verifies that fresh ADC frames are available from both ADC instances, and publishes one packet.
 6. The transport path requests `transmit_task` using `TX_FLAG_SEND` when a normal-stream packet or high-rate frame should be sent.
 
 Key timing behavior in the current implementation:
 
+- The ADC trigger cadence is `3.2 kHz`, derived from `24 MHz / 7500`.
 - The DSP output sample rate is configured for `800 Hz`.
 - The normal background stream is intentionally throttled to one packet every `100000 us` (`10 Hz`).
 - High-rate capture bypasses that normal throttling and emits each filtered frame until the requested frame count is sent.
@@ -60,26 +61,28 @@ This design keeps the interrupt path short, makes the scheduler release explicit
 
 ## Architecture Diagrams
 
+These diagrams use Doxygen `\dot` blocks intentionally. They render in the generated HTML documentation, but they appear as raw source in standard Markdown editors and previews.
+
 ### Sampling And Transport Flow
 
 \dot
 digraph sampling_flow {
-	graph [rankdir=LR, bgcolor="transparent"];
-	node [shape=box, style="rounded,filled", fillcolor="#eef5ff", color="#335c81", fontname="Helvetica"];
-	edge [color="#4f6d7a", arrowsize=0.8];
+    graph [rankdir=LR, bgcolor="transparent"];
+    node [shape=box, style="rounded,filled", fillcolor="#eef5ff", color="#335c81", fontname="Helvetica"];
+    edge [color="#4f6d7a", arrowsize=0.8];
 
-	adc1 [label="ADC1 DMA\nranked analog channels"];
-	adc2 [label="ADC2 DMA\ninternal + analog channels"];
-	dsp [label="sampling_pipeline_service\nraw conversion\nCIC decimation\n100/200/300 Hz notch filters"];
-	pkt [label="tx_packet_service\npacket ownership\npublish latest frame"];
-	tx [label="transmit_service\nnormal binary stream\nhigh-rate capture stream"];
-	uart [label="USART1\nCOBS-framed machine protocol", fillcolor="#fdf3e7", color="#b26b00"];
+    adc1 [label="ADC1 DMA\nranked analog channels"];
+    adc2 [label="ADC2 DMA\ninternal + analog channels"];
+    dsp [label="sampling_pipeline_service\nraw conversion\nCIC decimation\n100/200/300 Hz notch filters"];
+    pkt [label="tx_packet_service\npacket ownership\npublish latest frame"];
+    tx [label="transmit_service\nnormal binary stream\nhigh-rate capture stream"];
+    uart [label="USART1\nCOBS-framed machine protocol", fillcolor="#fdf3e7", color="#b26b00"];
 
-	adc1 -> dsp;
-	adc2 -> dsp;
-	dsp -> pkt;
-	pkt -> tx;
-	tx -> uart;
+    adc1 -> dsp;
+    adc2 -> dsp;
+    dsp -> pkt;
+    pkt -> tx;
+    tx -> uart;
 }
 \enddot
 
@@ -87,23 +90,23 @@ digraph sampling_flow {
 
 \dot
 digraph task_flow {
-	graph [rankdir=TB, bgcolor="transparent"];
-	node [shape=box, style="rounded,filled", fillcolor="#eefaf0", color="#3d6b35", fontname="Helvetica"];
-	edge [color="#577590", arrowsize=0.8];
+    graph [rankdir=TB, bgcolor="transparent"];
+    node [shape=box, style="rounded,filled", fillcolor="#eefaf0", color="#3d6b35", fontname="Helvetica"];
+    edge [color="#577590", arrowsize=0.8];
 
-	irq [label="HAL callbacks / IRQs", fillcolor="#fff4e6", color="#a65e2e"];
-	dsp_task [label="dsp_task\nwaits on DSP_FLAG_TICK"];
-	cmd_task [label="command_task\nASCII config + binary capture requests"];
-	mon_task [label="monitor_task\nboot banner + button markers"];
-	tx_task [label="transmit_task\nwaits on TX_FLAG_SEND"];
+    irq [label="HAL callbacks / IRQs", fillcolor="#fff4e6", color="#a65e2e"];
+    dsp_task [label="dsp_task\nwaits on DSP_FLAG_TICK"];
+    cmd_task [label="command_task\nASCII config + binary capture requests"];
+    mon_task [label="monitor_task\nboot banner + button markers"];
+    tx_task [label="transmit_task\nwaits on TX_FLAG_SEND"];
 
-	irq -> dsp_task [label="LPTIM2 tick"];
-	irq -> cmd_task [label="USART1 RX bytes"];
-	irq -> mon_task [label="button press state"];
-	dsp_task -> tx_task [label="normal stream request"];
-	dsp_task -> tx_task [label="high-rate frame ready"];
-	cmd_task -> tx_task [label="start high-rate capture"];
-	mon_task -> tx_task [label="banner / trigger send"];
+    irq -> dsp_task [label="LPTIM2 tick"];
+    irq -> cmd_task [label="USART1 RX bytes"];
+    irq -> mon_task [label="button press state"];
+    dsp_task -> tx_task [label="normal stream request"];
+    dsp_task -> tx_task [label="high-rate frame ready"];
+    cmd_task -> tx_task [label="start high-rate capture"];
+    mon_task -> tx_task [label="banner / trigger send"];
 }
 \enddot
 
